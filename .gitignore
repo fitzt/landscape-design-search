@@ -8,7 +8,6 @@ landscape.db
 *.log
 
 # Design data (huge binary files)
-faiss_index.bin
 images.csv
 
 # Locally stored images/PDFs
