@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: landscape-portfolio-search
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PHOTO_FOLDER
+        value: ./optimized_images
+      - key: THUMBNAILS_DIR
+        value: ./backend/static/thumbnails
