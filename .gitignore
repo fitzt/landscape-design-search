@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+landscape.db
+*.log
+
+# Design data (huge binary files)
+faiss_index.bin
+images.csv
+
+# Locally stored images/PDFs
+optimized_images/
+generated_reports/
+
+# OS
+.DS_Store

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Search</title>
+    <meta name="description" content="Semantic search for your landscape photography portfolio">
+    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600&family=Poppins:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-brand">
+                <h1>Lynch Landscape & Tree Service</h1>
+                <p
+                    style="font-size: 0.75rem; color: #081D34; letter-spacing: 0.1em; text-transform:none; margin-top: 4px;">
+                    Intelligent Portfolio Search</p>
+                <img class="brand-logo" src="logo.jpg" alt="Lynch Landscape & Tree Service logo" width="140"
+                    height="140" />
+            </div>
+            <div class="search-bar">
+                <input type="search" id="searchInput" placeholder="Search our portfolio..." autofocus>
+                <button id="searchBtn">Search</button>
+            </div>
+            <div class="filters">
+                <select id="folderFilter" class="filter-select">
+                    <option value="">All Folders</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main id="resultsGrid" class="grid-container">
+            <div class="empty-state">
+                <div class="onboarding-guide">
+                    <h2>Build Your Vision Board</h2>
+                    <p class="guide-subtitle">Follow these steps to create a design profile for our architects.</p>
+
+                    <div class="steps-grid">
+                        <div class="step-card">
+                            <div class="step-icon">1</div>
+                            <h3>Search</h3>
+                            <p>Start with a broad term like "Pool", "Patio", or "Retaining Wall".</p>
+                        </div>
+
+                        <div class="step-card">
+                            <div class="step-icon">2</div>
+                            <h3>Refine</h3>
+                            <p>Click the <b>Magnifying Glass</b> on any image to find visually similar styles.</p>
+                        </div>
+
+                        <div class="step-card">
+                            <div class="step-icon">3</div>
+                            <h3>Collect</h3>
+                            <p>Tap the <b>Heart</b> to save images that match your dream landscape.</p>
+                        </div>
+
+                        <div class="step-card">
+                            <div class="step-icon">4</div>
+                            <h3>Analyze</h3>
+                            <p>Click "Start Project Vision" to get your <b>Design Report</b>.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Vision Dock (Persistent Bottom Bar) -->
+        <div id="vision-dock" class="vision-dock hidden">
+            <div class="dock-header">
+                <span class="dock-title">Your Vision Board (<span id="dock-count">0</span>)</span>
+                <button id="dock-finalize-btn" class="dock-btn" onclick="window.openVisionModal()">
+                    Finalize Vision
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="margin-left:8px;">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+            <div class="dock-content">
+                <div id="dock-items" class="dock-items">
+                    <!-- Thumbnails injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Vision Modal (White Theme Redesign) -->
+        <div id="vision-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-btn" onclick="window.closeVisionModal()">&times;</span>
+
+                <div class="modal-grid">
+                    <!-- Left: Form -->
+                    <div class="modal-left">
+                        <div class="brand-header-mobile">
+                            <h3 class="brand-text">Lynch Landscape & Tree Service</h3>
+                            <p class="brand-sub">Sudbury, MA</p>
+                        </div>
+                        <h2>Save Your Project Vision</h2>
+                        <p class="subtitle">Tell us about your project.</p>
+
+                        <form id="lead-form" onsubmit="window.submitLead(event)">
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label>Name <span class="required">*</span></label>
+                                    <input type="text" id="lead-name" required placeholder="Jane Doe">
+                                </div>
+                                <div class="form-group half">
+                                    <label>Email <span class="required">*</span></label>
+                                    <input type="email" id="lead-email" required placeholder="jane@example.com">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label>Phone</label>
+                                    <input type="tel" id="lead-phone" placeholder="(555) 123-4567">
+                                </div>
+                                <div class="form-group half">
+                                    <label>Project Address</label>
+                                    <input type="text" id="lead-address" placeholder="123 Maple Dr">
+                                </div>
+                            </div>
+
+
+
+                            <div class="form-group">
+                                <label>Timeline <span class="required">*</span></label>
+                                <div class="radio-group">
+                                    <label class="radio-option">
+                                        <input type="radio" name="timeline" value="ASAP" required>
+                                        <span>As soon as possible</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="timeline" value="3-6 Months">
+                                        <span>Within 3-6 months</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="timeline" value="Next Year">
+                                        <span>Just dreaming for next year</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Budget Scale <span class="required">*</span></label>
+                                <div class="radio-group">
+                                    <label class="radio-option">
+                                        <input type="radio" name="budget" value="High Budget" required>
+                                        <span>Complete transformation</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="budget" value="Medium Budget">
+                                        <span>Upgrading specific area</span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="budget" value="Low Budget">
+                                        <span>Minor updates</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="submit-btn" id="submitVisionBtn">Finalize Vision</button>
+                        </form>
+                    </div>
+
+                    <!-- Right: Branding & Review -->
+                    <div class="modal-right">
+                        <div class="brand-header">
+                            <h3 class="brand-text">LYNCH LANDSCAPE</h3>
+                            <p class="brand-sub">DESIGN & TREE SERVICE</p>
+                        </div>
+
+                        <!-- AI Vision Analysis Panel -->
+                        <div id="vision-analysis-panel" class="vision-analysis hidden">
+                            <div class="analysis-header">
+                                <h4>Design Analysis <span
+                                        style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-left: 0.5rem;">v9.1</span>
+                                </h4>
+                                <button id="copy-brief-btn" class="copy-btn" onclick="window.copyBriefToClipboard()">
+                                    📋 Copy Brief
+                                </button>
+                            </div>
+
+                            <!-- Loading State -->
+                            <div id="analysis-loading" class="analysis-loading">
+                                <div class="spinner"></div>
+                                <p>Analyzing your vision...</p>
+                            </div>
+
+                            <!-- Analysis Content -->
+                            <div id="analysis-content" class="analysis-content hidden">
+                                <!-- Themes -->
+                                <div class="analysis-section">
+                                    <h5>Design Themes</h5>
+                                    <div id="themes-container" class="themes-grid"></div>
+                                </div>
+
+                                <!-- Top Elements -->
+                                <div class="analysis-section">
+                                    <h5>Top Elements</h5>
+                                    <div id="elements-container" class="elements-grid"></div>
+                                </div>
+
+                                <!-- Materials & Planting -->
+                                <div class="analysis-section">
+                                    <div class="two-col">
+                                        <div>
+                                            <h5>Materials</h5>
+                                            <div id="materials-container" class="tag-list"></div>
+                                        </div>
+                                        <div>
+                                            <h5>Planting</h5>
+                                            <div id="planting-container" class="tag-list"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Key Insights -->
+                                <div class="analysis-section">
+                                    <h5>Key Insights</h5>
+                                    <div id="insights-container" class="insights-list"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="vision-summary">
+                            <!-- Style Badge Removed -->
+
+                            <h4>Your Board</h4>
+                            <div id="vision-review-list" class="review-list">
+                                <!-- JS Injects: Thumbs + Note Inputs -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lightbox -->
+        <div id="lightbox" class="lightbox hidden">
+            <button id="lightboxClose" class="close-btn">&times;</button>
+            <div class="lightbox-content">
+                <img id="lightboxImage" src="" alt="">
+
+                <button id="lightboxPrev" class="nav-btn prev">&lsaquo;</button>
+                <button id="lightboxNext" class="nav-btn next">&rsaquo;</button>
+
+                <div class="lightbox-controls">
+                    <button id="lightboxFav" class="control-btn">★ Favorite</button>
+                    <!-- Vision button injected by JS -->
+                    <button id="lightboxNotes" class="control-btn">✎ Notes</button>
+                    <div class="collection-adder">
+                        <select id="lightboxAddToCollection">
+                            <option value="">+ Collection</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notes Modal -->
+        <div id="notesModal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Edit Notes</h3>
+                <textarea id="notesInput" rows="5" placeholder="Add notes about this image..."></textarea>
+                <div class="modal-actions">
+                    <button id="cancelNotesBtn">Cancel</button>
+                    <button id="saveNotesBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="version-badge"
+        style="position:fixed; bottom:10px; right:10px; background:rgba(0,0,0,0.8); color: #00ff9d; padding: 5px 10px; border-radius: 4px; z-index: 9999; font-family: monospace; font-weight: bold;">
+        v9.8 - Logo FIX</div>
+    <script type="module" src="app.js?v=9.7"></script>
+    <link rel="stylesheet" href="styles.css?v=9.7">
+</body>
+
+</html>

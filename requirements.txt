@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sentence-transformers
+faiss-cpu
+Pillow
+exifread
+numpy
+python-multipart
+requests
+psycopg2-binary
+reportlab==4.4.6
+supabase
+python-dotenv
+scikit-learn
