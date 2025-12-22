@@ -24,11 +24,27 @@ class SearchEngine:
         self.model = SentenceTransformer(CLIP_MODEL_NAME)
         print("Model loaded.")
 
-    def search(self, query: str, top_k: int = DEFAULT_TOP_K, favorites_only: bool = False, folder: str = None):
+    def search(self, query: str, top_k: int = DEFAULT_TOP_K, favorites_only: bool = False, folder: str = None, project_slug: str = None):
         if not self.index or not self.model:
             print("Search Error: Index or Model missing")
             return []
 
+        # CASE 1: No Query (Browse Mode or Project Mode base view)
+        if not query:
+            conn = get_db_connection()
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                if project_slug:
+                    # STRICT: Exact match on project_slug column
+                    cur.execute("SELECT * FROM images WHERE project_slug = %s ORDER BY file_path ASC", (project_slug,))
+                elif folder:
+                    cur.execute("SELECT * FROM images WHERE folder = %s ORDER BY id", (folder,))
+                else:
+                    cur.execute("SELECT * FROM images ORDER BY id LIMIT %s", (top_k,))
+                rows = cur.fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+
+        # CASE 2: Semantic Search
         # Encode Query
         query_emb = self.model.encode([query])
         query_emb = query_emb.astype('float32')
@@ -41,19 +57,6 @@ class SearchEngine:
         ids = ids[0]
         distances = distances[0]
         
-        print(f"DEBUG: Query='{query}' found {len(ids)} raw results.")
-        print(f"DEBUG: Top 3 IDs: {ids[:3]}, Scores: {distances[:3]}")
-
-        # Determine the score threshold based on top result
-        MIN_ABSOLUTE_SCORE = 0.05
-        RELATIVE_THRESHOLD = 0.60
-        
-        top_score = float(distances[0]) if len(distances) > 0 else 0
-        relative_min_score = top_score * RELATIVE_THRESHOLD
-        score_threshold = max(MIN_ABSOLUTE_SCORE, relative_min_score)
-        
-        print(f"DEBUG: Threshold={score_threshold} (Top={top_score})")
-
         # Fetch Metadata
         valid_ids = [int(i) for i in ids if i >= 0]
         if not valid_ids:
@@ -70,32 +73,35 @@ class SearchEngine:
         conn.close()
 
         row_map = {r['id']: dict(r) for r in rows}
-        print(f"DEBUG: DB found {len(row_map)} matching images.")
-
+        
         results = []
         for score, img_id in zip(distances, ids):
             if img_id < 0: continue
-            if img_id not in row_map: 
-                # print(f"DEBUG: Skip ID {img_id} (Not in DB)")
-                continue
-            
-            if float(score) < score_threshold:
-                # print(f"DEBUG: Skip ID {img_id} (Score {score} < {score_threshold})")
-                continue
+            if img_id not in row_map: continue
             
             img = row_map[img_id]
             if favorites_only and not img['favorite']: continue
             if folder and not img['file_path'].startswith(folder): continue
             
+            # Project Slug Filtering (Strict Exact Match)
+            if project_slug:
+                if img.get('project_slug') != project_slug:
+                    continue
+
+            # Tighten Vector Search: Zero-Leak Threshold
+            # For normalized vectors, squared L2 distance d^2 = 2(1 - cos_sim)
+            # If we want cos_sim >= 0.8, then d^2 <= 0.4
+            SIMILARITY_THRESHOLD = 0.4
+            if float(score) > SIMILARITY_THRESHOLD:
+                continue
+                
             img['score'] = float(score)
             results.append(img)
             
             if len(results) >= top_k:
                 break
                 
-        print(f"DEBUG: Returned {len(results)} final results.")
         return results
-
 
 
     def search_by_image(self, image_id: int, top_k: int = DEFAULT_TOP_K):
@@ -121,19 +127,34 @@ class SearchEngine:
         file_path = row[0]
         anchor_folder = row[1]
         
-        if not os.path.exists(file_path):
-             print(f"Error: File not found at {file_path}")
-             return []
+        if file_path.startswith("http"):
+            import requests
+            from io import BytesIO
+            try:
+                response = requests.get(file_path)
+                response.raise_for_status()
+                image = Image.open(BytesIO(response.content))
+            except Exception as e:
+                print(f"Error fetching image from URL: {e}")
+                return []
+        else:
+            if not os.path.exists(file_path):
+                 print(f"Error: File not found at {file_path}")
+                 return []
+            try:
+                image = Image.open(file_path)
+            except Exception as e:
+                print(f"Error opening local image: {e}")
+                return []
 
-        # 2. Load & Encode Image
+        # 2. Encode Image
         try:
-            image = Image.open(file_path)
             # encoding
             img_emb = self.model.encode([image])
             img_emb = img_emb.astype('float32')
             faiss.normalize_L2(img_emb)
         except Exception as e:
-            print(f"Error processing anchor image: {e}")
+            print(f"Error encoding image: {e}")
             return []
 
         # 3. Search in FAISS (Fetch more candidates since we re-rank)

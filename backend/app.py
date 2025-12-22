@@ -49,6 +49,7 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 50
     folder: Optional[str] = None
+    slug: Optional[str] = None
     favorites_only: bool = False
 
 class SimilarSearchRequest(BaseModel):
@@ -77,8 +78,21 @@ def health():
 
 @app.post("/api/search")
 async def search_endpoint(req: SearchRequest):
-    results = search_engine.search(req.query, req.top_k, req.favorites_only, req.folder)
+    results = search_engine.search(req.query, req.top_k, req.favorites_only, req.folder, req.slug)
     return {"results": results}
+
+@app.get("/api/projects/{slug}")
+async def get_project_metadata(slug: str):
+    conn = get_db_connection()
+    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        cur.execute("SELECT * FROM projects WHERE filename_slug = %s", (slug,))
+        row = cur.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    return dict(row)
 
 @app.post("/api/search/similar")
 async def search_similar_endpoint(req: SimilarSearchRequest):
@@ -199,7 +213,12 @@ def get_images_details(req: ImageDetailsRequest):
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         placeholders = ','.join(['%s'] * len(req.ids))
-        query = f"SELECT id, file_path, thumbnail_path, favorite FROM images WHERE id IN ({placeholders})"
+        query = f"""
+            SELECT id, file_path, thumbnail_path, favorite, tags, style_scores, caption,
+                   design_style, maintenance_level, seasonal_interest, spatial_purpose, color_palette, project_slug
+            FROM images 
+            WHERE id IN ({placeholders})
+        """
         cur.execute(query, tuple(req.ids))
         rows = cur.fetchall()
         

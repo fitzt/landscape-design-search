@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portfolio Search</title>
     <meta name="description" content="Semantic search for your landscape photography portfolio">
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=14.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -17,18 +17,18 @@
 
 <body>
     <div class="app-container">
-        <!-- Header -->
         <header class="header">
             <div class="header-brand">
                 <h1>Lynch Landscape & Tree Service</h1>
                 <p
                     style="font-size: 0.75rem; color: #081D34; letter-spacing: 0.1em; text-transform:none; margin-top: 4px;">
-                    Intelligent Portfolio Search</p>
+                    Intelligent Portfolio Search <span style="opacity: 0.5; margin-left: 8px;">v14.0</span></p>
                 <img class="brand-logo" src="logo.jpg" alt="Lynch Landscape & Tree Service logo" width="140"
                     height="140" />
             </div>
             <div class="search-bar">
-                <input type="search" id="searchInput" placeholder="Search our portfolio..." autofocus>
+                <input type="search" id="searchInput"
+                    placeholder="Search for a feature or select an archetype to start..." autofocus>
                 <button id="searchBtn">Search</button>
             </div>
             <div class="filters">
@@ -38,53 +38,132 @@
             </div>
         </header>
 
-        <!-- Main Grid -->
-        <main id="resultsGrid" class="grid-container">
-            <div class="empty-state">
-                <div class="onboarding-guide">
-                    <h2>Build Your Vision Board</h2>
-                    <p class="guide-subtitle">Follow these steps to create a design profile for our architects.</p>
+        <!-- Main Layout with Sidebar -->
+        <div class="main-layout">
+            <div class="main-content">
 
-                    <div class="steps-grid">
-                        <div class="step-card">
-                            <div class="step-icon">1</div>
-                            <h3>Search</h3>
-                            <p>Start with a broad term like "Pool", "Patio", or "Retaining Wall".</p>
+                <!-- Project Hero Header -->
+                <div id="project-hero" class="project-hero hidden"></div>
+
+                <!-- Smart Refinement Chips -->
+                <div id="smart-chips-container" class="chips-row hidden"></div>
+
+                <!-- Main Grid -->
+                <main id="resultsGrid" class="grid-container">
+                </main>
+
+                <!-- Frosted Glass Instructions Overlay -->
+                <div id="instructions-overlay" class="instructions-overlay">
+                    <div class="frosted-glass-box">
+                        <button class="close-overlay-btn" onclick="window.closeInstructions()">&times;</button>
+                        <h2>Discover Your Design DNA</h2>
+                        <p class="subtitle">We don't just find photos; we decode your landscape psychology. Every
+                            selection builds a blueprint of your unconscious preferences.</p>
+
+                        <div class="instruction-steps">
+                            <div class="step">
+                                <span class="step-num">01</span>
+                                <div class="step-text">
+                                    <h6>Select Archetypes</h6>
+                                    <p>Select images that resonate. Don't overthink—let intuition guide you.</p>
+                                </div>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">02</span>
+                                <div class="step-text">
+                                    <h6>Observe Patterns</h6>
+                                    <p>As you curate, our Intelligence Engine identifies recurring themes and materials.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">03</span>
+                                <div class="step-text">
+                                    <h6>Unlock Insights</h6>
+                                    <p>Finalize your board to see a deep architectural brief of your personal style.</p>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="step-card">
-                            <div class="step-icon">2</div>
-                            <h3>Refine</h3>
-                            <p>Click the <b>Magnifying Glass</b> on any image to find visually similar styles.</p>
-                        </div>
-
-                        <div class="step-card">
-                            <div class="step-icon">3</div>
-                            <h3>Collect</h3>
-                            <p>Tap the <b>Heart</b> to save images that match your dream landscape.</p>
-                        </div>
-
-                        <div class="step-card">
-                            <div class="step-icon">4</div>
-                            <h3>Analyze</h3>
-                            <p>Click "Start Project Vision" to get your <b>Design Report</b>.</p>
-                        </div>
+                        <button class="get-started-btn" onclick="window.closeInstructions()">Enter Portfolio</button>
                     </div>
                 </div>
             </div>
-        </main>
+
+            <!-- Persistent Analysis Sidebar -->
+            <aside id="analysis-sidebar" class="analysis-sidebar hidden">
+                <div id="vision-analysis-panel" class="vision-analysis">
+                    <div class="analysis-header">
+                        <h4>Design Intelligence <span
+                                style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-left: 0.5rem;">PRO
+                                v14.0</span></h4>
+                        <div id="vision-meter-container" class="vision-meter-wrapper">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Spec Sheet Analysis Content -->
+                    <div id="analysis-content" class="analysis-content spec-sheet">
+
+                        <!-- Section: Style & Archetype -->
+                        <div class="spec-section">
+                            <h5 class="spec-label">Architectural Archetype</h5>
+                            <div id="dominant-style" class="spec-value dominant-text">---</div>
+                        </div>
+
+                        <hr class="spec-divider">
+
+                        <!-- Section: Primary Materials -->
+                        <div id="materials-section" class="spec-section">
+                            <h5 class="spec-label">Primary Materials</h5>
+                            <div id="materials-list" class="spec-value materials-text">---</div>
+                        </div>
+
+                        <hr class="spec-divider">
+
+                        <!-- Section: Site Dynamics -->
+                        <div class="spec-section">
+                            <h5 class="spec-label">Site Dynamics</h5>
+                            <div id="site-dynamics-list" class="site-dynamics-grid">
+                                <div class="dynamic-item">
+                                    <span class="dynamic-label">PRIVACY:</span>
+                                    <span id="privacy-val" class="dynamic-value">---</span>
+                                </div>
+                                <div class="dynamic-item">
+                                    <span class="dynamic-label">TERRAIN:</span>
+                                    <span id="terrain-val" class="dynamic-value">---</span>
+                                </div>
+                                <div class="dynamic-item">
+                                    <span class="dynamic-label">BALANCE:</span>
+                                    <span id="balance-val" class="dynamic-value">---</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="spec-divider">
+
+                        <!-- Section: Spatial Intent -->
+                        <div class="spec-section">
+                            <h5 class="spec-label">Spatial Intent</h5>
+                            <div id="spatial-intent-list" class="spatial-list">---</div>
+                        </div>
+
+                        <div class="spec-footer">
+                            <button id="finalize-vision-trigger" class="spec-finalize-btn"
+                                onclick="window.openVisionModal()">
+                                Finalize Architectural Brief
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
 
         <!-- Vision Dock (Persistent Bottom Bar) -->
         <div id="vision-dock" class="vision-dock hidden">
             <div class="dock-header">
                 <span class="dock-title">Your Vision Board (<span id="dock-count">0</span>)</span>
-                <button id="dock-finalize-btn" class="dock-btn" onclick="window.openVisionModal()">
-                    Finalize Vision
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        style="margin-left:8px;">
-                        <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                </button>
+                <span class="dock-title">Your Vision Board (<span id="dock-count">0</span>)</span>
             </div>
             <div class="dock-content">
                 <div id="dock-items" class="dock-items">
@@ -180,64 +259,9 @@
                             <p class="brand-sub">DESIGN & TREE SERVICE</p>
                         </div>
 
-                        <!-- AI Vision Analysis Panel -->
-                        <div id="vision-analysis-panel" class="vision-analysis hidden">
-                            <div class="analysis-header">
-                                <h4>Design Analysis <span
-                                        style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-left: 0.5rem;">v9.1</span>
-                                </h4>
-                                <button id="copy-brief-btn" class="copy-btn" onclick="window.copyBriefToClipboard()">
-                                    📋 Copy Brief
-                                </button>
-                            </div>
-
-                            <!-- Loading State -->
-                            <div id="analysis-loading" class="analysis-loading">
-                                <div class="spinner"></div>
-                                <p>Analyzing your vision...</p>
-                            </div>
-
-                            <!-- Analysis Content -->
-                            <div id="analysis-content" class="analysis-content hidden">
-                                <!-- Themes -->
-                                <div class="analysis-section">
-                                    <h5>Design Themes</h5>
-                                    <div id="themes-container" class="themes-grid"></div>
-                                </div>
-
-                                <!-- Top Elements -->
-                                <div class="analysis-section">
-                                    <h5>Top Elements</h5>
-                                    <div id="elements-container" class="elements-grid"></div>
-                                </div>
-
-                                <!-- Materials & Planting -->
-                                <div class="analysis-section">
-                                    <div class="two-col">
-                                        <div>
-                                            <h5>Materials</h5>
-                                            <div id="materials-container" class="tag-list"></div>
-                                        </div>
-                                        <div>
-                                            <h5>Planting</h5>
-                                            <div id="planting-container" class="tag-list"></div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Key Insights -->
-                                <div class="analysis-section">
-                                    <h5>Key Insights</h5>
-                                    <div id="insights-container" class="insights-list"></div>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="vision-summary">
-                            <!-- Style Badge Removed -->
-
-                            <h4>Your Board</h4>
-                            <div id="vision-review-list" class="review-list">
+                            <h4>Selected Portfolio Works</h4>
+                            <div id="modal-review-list" class="review-list">
                                 <!-- JS Injects: Thumbs + Note Inputs -->
                             </div>
                         </div>
@@ -257,7 +281,8 @@
 
                 <div class="lightbox-controls">
                     <button id="lightboxFav" class="control-btn">★ Favorite</button>
-                    <!-- Vision button injected by JS -->
+                    <!-- Project button injected by JS or hardcoded -->
+                    <button id="lightboxProject" class="control-btn project-btn-luxe">View Full Project</button>
                     <button id="lightboxNotes" class="control-btn">✎ Notes</button>
                     <div class="collection-adder">
                         <select id="lightboxAddToCollection">
@@ -283,9 +308,9 @@
 
     <div id="version-badge"
         style="position:fixed; bottom:10px; right:10px; background:rgba(0,0,0,0.8); color: #00ff9d; padding: 5px 10px; border-radius: 4px; z-index: 9999; font-family: monospace; font-weight: bold;">
-        v9.8 - Logo FIX</div>
-    <script type="module" src="app.js?v=9.7"></script>
-    <link rel="stylesheet" href="styles.css?v=9.7">
+        v14.0 - SINGLE PATH ENGINE</div>
+    <script type="module" src="app.js?v=14.0"></script>
+    <link rel="stylesheet" href="styles.css?v=14.0">
 </body>
 
 </html>

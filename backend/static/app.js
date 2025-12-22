@@ -1,5 +1,6 @@
-/* ... existing init stuff ... */
 const API_BASE = '/api';
+const VERSION = '14.0';
+console.log(`Lynch Landscape Intelligence Engine ${VERSION} initialized.`);
 
 // GLOBAL ERROR TRAP for Debugging
 window.onerror = function (msg, url, line, col, error) {
@@ -13,6 +14,42 @@ let currentLightboxIndex = -1;
 let folders = [];
 let collections = [];
 let visionBoard = JSON.parse(localStorage.getItem('visionBoard')) || [];
+let imageCache = {}; // Global metadata cache
+
+const SEED_CONFIG = [
+    { id: 322, label: "The Modernist" },
+    { id: 307, label: "The Entertainer" },
+    { id: 764, label: "The Naturalist" },
+    { id: 309, label: "The Hearth" },
+    { id: 310, label: "The Architectural" },
+    { id: 600, label: "The Sanctuary" },
+    { id: 450, label: "The Minimalist" },
+    { id: 120, label: "The Traditionalist" }
+];
+const ARCHETYPE_CONFIG = {
+    'The Modernist': { style_query: 'Modern', suggested_chips: ['Concrete Pavers', 'Linear', 'Minimalist', 'Steel'] },
+    'The Entertainer': { style_query: 'Kitchen', suggested_chips: ['Pizza Oven', 'Fire Pit', 'Bar Seating', 'Outdoor Grill'] },
+    'The Naturalist': { style_query: 'Natural', suggested_chips: ['Native Plants', 'Meadow', 'Wildlife', 'Stone Path'] },
+    'The Hearth': { style_query: 'Fire', suggested_chips: ['Fireplace', 'Wood Storage', 'Gathering', 'Flagstone'] },
+    'The Architectural': { style_query: 'Structure', suggested_chips: ['Retaining Wall', 'Steps', 'Terrace', 'Lighting'] },
+    'The Sanctuary': { style_query: 'Private', suggested_chips: ['Privacy Hedge', 'Screening', 'Water Feature', 'Enclosed'] },
+    'The Minimalist': { style_query: 'Simple', suggested_chips: ['Gravel', 'Lawn', 'Clean Lines', 'Single Material'] },
+    'The Traditionalist': { style_query: 'Classic', suggested_chips: ['Brick', 'Boxwood', 'Symmetry', 'Formal Garden'] }
+};
+const SEED_IDS = SEED_CONFIG.map(s => s.id);
+const ARCHETYPES = Object.fromEntries(SEED_CONFIG.map(s => [s.id, s.label]));
+
+// New state for Single Path
+let activeArchetype = null;
+let activeChips = new Set();
+let hasViewedProject = false;
+
+// Luxe Icons (SVGs)
+const ICONS = {
+    SEARCH: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>`,
+    PLUS: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>`,
+    CHECK_CIRCLE: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4" stroke="white" stroke-width="2" fill="none"/></svg>`
+};
 
 // DOM Elements
 const searchInput = document.getElementById('searchInput');
@@ -36,18 +73,58 @@ const lightboxAddToCollection = document.getElementById('lightboxAddToCollection
 
 // Init
 async function init() {
+    console.log("Initializing Portfolio search...");
+
+    // Check if we should show instructions (Versioned for v13)
+    const lastShown = localStorage.getItem('instructionsShown_v13');
+    if (!lastShown) {
+        document.getElementById('instructions-overlay').classList.remove('hidden');
+    } else {
+        document.getElementById('instructions-overlay').classList.add('hidden');
+    }
+
+    // Load initial seeds if nothing's happening
+    if (visionBoard.length === 0) {
+        loadSeedPortfolio();
+    } else {
+        performSearch(""); // Default view
+    }
+
     try {
         await loadFolders();
         await loadCollections();
         updateVisionUI();
 
-        // Ensure Onboarding is visible state
-        resultsGrid.innerHTML = ONBOARDING_HTML;
-        currentResults = [];
-
     } catch (e) {
         console.error("Init Error:", e);
         alert("Init Error: " + e.message);
+    }
+}
+
+window.closeInstructions = function () {
+    const overlay = document.getElementById('instructions-overlay');
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+        localStorage.setItem('instructionsShown_v13', 'true');
+    }, 400);
+}
+
+async function loadSeedPortfolio() {
+    console.log("Loading luxury path seeds...");
+    try {
+        const res = await fetch(`${API_BASE}/images/details`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: SEED_IDS })
+        });
+        const data = await res.json();
+        if (data.images) {
+            data.images.forEach(img => imageCache[img.id] = img);
+            updateGridWithFlip(data.images);
+        }
+    } catch (e) {
+        console.error("Seed load failed", e);
     }
 }
 // (Keeping standard listeners)
@@ -168,50 +245,44 @@ async function loadCollections() {
     }
 }
 
-// Onboarding HTML
-const ONBOARDING_HTML = `
-<div class="empty-state">
-    <div class="onboarding-guide">
-        <h2>Build Your Vision Board</h2>
-        <p class="guide-subtitle">Follow these steps to create a design profile for our architects.</p>
-        <div class="steps-grid">
-            <div class="step-card">
-                <div class="step-icon">1</div>
-                <h3>Search</h3>
-                <p>Start with a broad term like "Pool", "Patio", or "Retaining Wall".</p>
-            </div>
-            <div class="step-card">
-                <div class="step-icon">2</div>
-                <h3>Refine 🔍</h3>
-                <p>Click the <b>Magnifying Glass</b> on any image to find visually similar styles.</p>
-            </div>
-            <div class="step-card">
-                <div class="step-icon">3</div>
-                <h3>Collect ❤️</h3>
-                <p>Tap the <b>Heart</b> to save images that match your dream landscape.</p>
-            </div>
-            <div class="step-card">
-                <div class="step-icon">4</div>
-                <h3>Analyze 🧠</h3>
-                <p>Click "Start Project Vision" to get your <b>AI Design Report</b>.</p>
-            </div>
-        </div>
-    </div>
-</div>
-`;
-
 // New state for FLIP
 let isReflowing = false;
 
-async function performSearch() {
-    console.log("performSearch called");
-    const query = searchInput.value.trim();
-    const folder = folderFilter.value;
+// New state for Project Mode
+let isProjectMode = false;
+let currentProjectSlug = null;
 
-    // "Empty State" Check
-    if (!query && !folder) {
-        resultsGrid.innerHTML = ONBOARDING_HTML;
-        currentResults = [];
+// --- UTILS ---
+function extractProjectSlug(filename) {
+    if (!filename) return null;
+    // Strict Regex: Identify project name by splitting on the last underscore/hyphen preceding a number
+    // Example: mcgonigle_01.jpg -> mcgonigle
+    // Example: old-connecticut-path-003.jpg -> old-connecticut-path
+    const match = filename.match(/^(.*)[-_]\d+/);
+    if (match && match[1]) {
+        return match[1];
+    }
+    return null; // Safety: do not return full filename if pattern fails
+}
+
+async function performSearch(query = searchInput.value.trim(), folder = folderFilter.value) {
+    console.log("performSearch called");
+
+    // UNIFIED QUERY: Text + Archetype + Chips
+    let combinedQuery = query;
+    if (activeArchetype) {
+        const config = ARCHETYPE_CONFIG[activeArchetype];
+        if (config) combinedQuery = `${combinedQuery} ${config.style_query}`.trim();
+    }
+    if (activeChips.size > 0) {
+        combinedQuery = `${combinedQuery} ${Array.from(activeChips).join(' ')}`.trim();
+    }
+
+    resultsGrid.innerHTML = '<div class="loading">Architecting results...</div>';
+
+    // "Empty Search" Check -> Load Seeds
+    if (!combinedQuery && !folder && !isProjectMode) {
+        loadSeedPortfolio();
         return;
     }
 
@@ -220,13 +291,92 @@ async function performSearch() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            query: query || "",
-            top_k: 24,
-            folder: folder || null
+            query: combinedQuery || "",
+            top_k: isProjectMode ? 100 : 24,
+            folder: folder || null,
+            slug: isProjectMode ? currentProjectSlug : null
         })
     });
     const data = await res.json();
+
+    // Cache Metadata (Ensure we get rich columns if available)
+    if (data.results) {
+        data.results.forEach(img => {
+            imageCache[img.id] = img;
+        });
+    }
+
     updateGridWithFlip(data.results);
+    updateVisionMeter();
+}
+
+window.enterProjectMode = async function (slug) {
+    if (!slug) return;
+    console.log("Entering Project Mode:", slug);
+    isProjectMode = true;
+    currentProjectSlug = slug;
+    hasViewedProject = true;
+    updateVisionMeter();
+
+    // Safety: Clear previous state
+    currentResults = [];
+    resultsGrid.innerHTML = '<div class="loading">Architecting project...</div>';
+
+    // 1. Fetch Project Metadata
+    try {
+        const res = await fetch(`${API_BASE}/projects/${slug}`);
+        if (res.ok) {
+            const project = await res.json();
+            renderProjectHero(project);
+        } else {
+            console.warn("Project metadata not found for slug:", slug);
+            renderProjectHero({ display_title: slug, location: 'Portfolio', description: '', awards: [] });
+        }
+    } catch (err) {
+        console.error("Error fetching project metadata:", err);
+    }
+
+    // 2. Re-search with slug filter
+    await performSearch('', '');
+
+    // 3. Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (lightbox) lightbox.classList.add('hidden');
+}
+
+window.exitProjectMode = function () {
+    console.log("Exiting Project Mode");
+    isProjectMode = false;
+    currentProjectSlug = null;
+
+    const hero = document.getElementById('project-hero');
+    if (hero) hero.classList.add('hidden');
+
+    performSearch();
+}
+
+function renderProjectHero(project) {
+    const hero = document.getElementById('project-hero');
+    if (!hero) return;
+
+    hero.classList.remove('hidden');
+
+    // Awards rendering
+    let awardsHtml = '';
+    if (project.awards && project.awards.length > 0) {
+        awardsHtml = project.awards.map(a => `<span class="award-badge">${a}</span>`).join('');
+    }
+
+    hero.innerHTML = `
+        <div class="hero-content">
+            <button class="back-link" onclick="window.exitProjectMode()">← BACK TO SEARCH</button>
+            <div class="hero-top">
+                <h2 class="hero-title">${project.display_title} <span class="hero-location">— ${project.location}</span></h2>
+                <div class="hero-awards">${awardsHtml}</div>
+            </div>
+            <p class="hero-description">${project.description}</p>
+        </div>
+    `;
 }
 
 // Living Grid Logic
@@ -243,6 +393,13 @@ async function triggerSimilaritySearch(id) {
             body: JSON.stringify({ id: id, top_k: 50 })
         });
         const data = await res.json();
+
+        // Cache Metadata
+        if (data.results) {
+            data.results.forEach(img => {
+                imageCache[img.id] = img;
+            });
+        }
 
         // The anchor image should ideally be part of the result,
         // often returned as the first result if distance is 0.
@@ -290,6 +447,18 @@ function updateGridWithFlip(newResults) {
         card.className = 'card';
         card.dataset.id = img.id; // Critical for FLIP
 
+        // Hover Intelligence: Show sidebar preview if board is empty
+        card.onmouseenter = () => {
+            if (visionBoard.length === 0) {
+                calculateLiveAnalysis([img]);
+            }
+        };
+        card.onmouseleave = () => {
+            if (visionBoard.length === 0) {
+                calculateLiveAnalysis([]);
+            }
+        };
+
         // Image Click -> Lightbox
         // But we need a separate button for "Find Similar"
 
@@ -301,24 +470,31 @@ function updateGridWithFlip(newResults) {
         // NOTE: onclick="event.stopPropagation()" is crucial for buttons inside the card
 
         const isSelected = visionBoard.includes(img.id);
-        const heartClass = isSelected ? 'active' : '';
-        const heartIcon = isSelected ? '❤️' : '🤍';
+        const iconClass = isSelected ? 'active' : '';
+        const actionIcon = isSelected ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
 
         card.innerHTML = `
             <img src="${thumbUrl}" loading="lazy" alt="${img.filename}">
             <div class="card-overlay">
                 <div class="card-actions">
-                    <button class="icon-btn" onclick="event.stopPropagation(); triggerSimilaritySearch(${img.id})" title="Find Similar">
-                        🔍
+                    <button class="icon-btn" onclick="event.stopPropagation(); window.triggerSimilaritySearch(${img.id})" title="Find Similar">
+                        ${ICONS.SEARCH}
                     </button>
-                    <button class="icon-btn ${heartClass}" onclick="event.stopPropagation(); toggleVisionFromCard(${img.id})" title="Add to Vision">
-                        ${heartIcon}
+                    <button class="icon-btn ${iconClass}" onclick="event.stopPropagation(); window.toggleVisionFromCard(${img.id})" title="Add to Vision">
+                        ${actionIcon}
                     </button>
                 </div>
             </div>
+            ${ARCHETYPES[img.id] ? `<div class="archetype-badge">${ARCHETYPES[img.id]}</div>` : ''}
         `;
-        // Main click -> Lightbox
-        card.onclick = () => openLightbox(index);
+        // Main click -> Open Lightbox OR trigger Archetype flow
+        card.onclick = () => {
+            if (ARCHETYPES[img.id]) {
+                handleArchetypeClick(ARCHETYPES[img.id]);
+            } else {
+                openLightbox(index);
+            }
+        };
 
         resultsGrid.appendChild(card);
     });
@@ -382,29 +558,54 @@ function updateLightboxUI() {
     if (currentLightboxIndex < 0 || currentLightboxIndex >= currentResults.length) return;
     const img = currentResults[currentLightboxIndex];
     lightboxImage.src = `${API_BASE}/image/${img.id}/raw`;
-    lightboxFav.classList.toggle('active', !!img.favorite);
 
+    // Favorites
+    lightboxFav.classList.toggle('active', !!img.favorite);
+    lightboxFav.onclick = (e) => {
+        e.stopPropagation();
+        toggleFavorite(img.id);
+    };
+
+    // Project Mode Trigger
+    const projectBtn = document.getElementById('lightboxProject');
+    if (projectBtn) {
+        if (img.project_slug) {
+            projectBtn.style.display = 'block';
+            projectBtn.onclick = () => window.enterProjectMode(img.project_slug);
+        } else {
+            projectBtn.style.display = 'none';
+        }
+    }
+
+    // Notes
+    if (lightboxNotes) {
+        lightboxNotes.onclick = () => openNotesModal(img);
+    }
+
+    // Vision Button
     let visionBtn = document.getElementById('lightboxVision');
     if (!visionBtn) {
         visionBtn = document.createElement('button');
         visionBtn.id = 'lightboxVision';
         visionBtn.className = 'control-btn';
-        lightboxFav.parentNode.insertBefore(visionBtn, lightboxFav.nextSibling);
+        // Insert it after favorite or similar
+        const target = document.getElementById('lightboxSimilar') || lightboxFav;
+        target.parentNode.insertBefore(visionBtn, target.nextSibling);
         visionBtn.onclick = toggleVision;
     }
     const inVision = visionBoard.includes(img.id);
-    visionBtn.textContent = inVision ? "✨ In Vision" : "+ Add to Vision";
+    const btnIcon = inVision ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
+    visionBtn.innerHTML = `${btnIcon} <span>Vision</span>`;
     visionBtn.classList.toggle('active', inVision);
 
-    // New: Find Similar in Lightbox
+    // Similar Button
     let similarBtn = document.getElementById('lightboxSimilar');
     if (!similarBtn) {
         similarBtn = document.createElement('button');
         similarBtn.id = 'lightboxSimilar';
         similarBtn.className = 'control-btn';
         similarBtn.textContent = "🔍 Find Similar";
-        lightboxFav.parentNode.insertBefore(similarBtn, lightboxFav.nextSibling); // Insert before Vision? Or after?
-        // Let's Insert after Fav, before Vision to group actions
+        lightboxFav.parentNode.insertBefore(similarBtn, lightboxFav.nextSibling);
         similarBtn.onclick = () => {
             triggerSimilaritySearch(currentResults[currentLightboxIndex].id);
         };
@@ -417,68 +618,80 @@ function toggleVision() {
 }
 
 // New: Direct Toggle
-window.toggleVisionFromCard = function (id) {
+window.toggleVisionFromCard = async function (id) {
     console.log("toggleVisionFromCard called with ID:", id);
     const idx = visionBoard.indexOf(id);
     if (idx === -1) {
         visionBoard.push(id);
+        // Ensure we have metadata
+        if (!imageCache[id]) {
+            try {
+                const res = await fetch(`${API_BASE}/images/details`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: [id] })
+                });
+                const data = await res.json();
+                if (data.images && data.images[0]) {
+                    imageCache[id] = data.images[0];
+                }
+            } catch (e) {
+                console.error("Failed to fetch metadata for live analysis", e);
+            }
+        }
     } else {
         visionBoard.splice(idx, 1);
     }
     localStorage.setItem('visionBoard', JSON.stringify(visionBoard));
+    updateVisionMeter();
 
-    updateVisionUI(); // Updates Dock
+    updateVisionUI(); // Updates Dock & Analysis
     updateLightboxUI(); // Updates Modal if open
 
-    // Update Card UI directly without full re-render
-    // Find card with data-id
+    // Update Card UI
     const card = resultsGrid.querySelector(`.card[data-id="${id}"]`);
     if (card) {
-        // Find the heart button
-        const btn = card.querySelectorAll('.icon-btn')[1]; // 2nd button
+        const btn = card.querySelectorAll('.icon-btn')[1];
         const isSel = visionBoard.includes(id);
-        btn.innerHTML = isSel ? '❤️' : '🤍';
+        btn.innerHTML = isSel ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
         btn.classList.toggle('active', isSel);
     }
 }
 
 function updateVisionUI() {
     const cnt = visionBoard.length;
-    // Update Dock
     const dock = document.getElementById('vision-dock');
     const dockCount = document.getElementById('dock-count');
     const dockItems = document.getElementById('dock-items');
+    const analysisSidebar = document.getElementById('analysis-sidebar');
 
-    dockCount.innerText = cnt;
-    dock.classList.toggle('visible', cnt > 0);
+    if (cnt > 0) {
+        dock.classList.remove('hidden');
+        analysisSidebar.classList.remove('hidden');
+        dockCount.textContent = cnt;
 
-    // Render Dock Items
-    dockItems.innerHTML = '';
-    visionBoard.forEach(id => {
-        // Find img data (might need cache if not in currentResults)
-        // For now, if not in current results, we might show a placeholder or try to find it.
-        // We really need a global cache of loaded images for this to be perfect.
-        // Or just use what we have.
-        let img = currentResults.find(r => r.id === id);
+        // Render dock items
+        dockItems.innerHTML = '';
+        visionBoard.forEach(id => {
+            const img = imageCache[id];
+            if (!img) return;
 
-        // If not in currentResults, check visionDetailsCache (from modal logic) or just use placeholder?
-        // Let's use visionDetailsCache if available.
-        if (!img && visionDetailsCache[id]) img = visionDetailsCache[id];
+            const div = document.createElement('div');
+            div.className = 'dock-item';
+            div.innerHTML = `<img src="/thumbnails/${img.thumbnail_path}" alt="Thumb">`;
+            div.onclick = () => {
+                const idx = currentResults.findIndex(r => r.id === id);
+                if (idx !== -1) openLightbox(idx);
+            };
+            dockItems.appendChild(div);
+        });
 
-        if (img) {
-            const thumb = document.createElement('img');
-            thumb.src = `/thumbnails/${img.thumbnail_path}`;
-            thumb.className = 'dock-thumb';
-            thumb.title = "Click to remove";
-            thumb.onclick = () => toggleVisionFromCard(id); // Clicking removes it
-            dockItems.appendChild(thumb);
-        } else {
-            // Fetch it? Or just show generic
-            // const span = document.createElement('span');
-            // span.innerText = `#${id}`;
-            // dockItems.appendChild(span);
-        }
-    });
+        // Trigger Live Analysis
+        calculateLiveAnalysis();
+    } else {
+        dock.classList.add('hidden');
+        analysisSidebar.classList.add('hidden');
+    }
 }
 
 // Missing helper functions
@@ -509,205 +722,212 @@ async function createCollectionPrompt() {
 }
 
 // Vision modal cache and notes
-let visionDetailsCache = {};
+let visionDetailsCache = {}; // This is now largely superseded by imageCache for vision board items
 let visionNotes = JSON.parse(localStorage.getItem('visionNotes')) || {};
-let currentVisionAnalysis = null;
 
+// Modal logic updated
 window.openVisionModal = async function () {
-    if (visionBoard.length === 0) return;
     visionModal.classList.remove('hidden');
 
-    // Fetch Details for ALL IDs in the board
-    try {
-        const res = await fetch(`${API_BASE}/images/details`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: visionBoard })
-        });
-        const data = await res.json();
-
-        // Update Cache
-        data.images.forEach(img => {
-            visionDetailsCache[img.id] = img;
-        });
-    } catch (e) {
-        console.error("Failed to fetch vision details", e);
-    }
+    // Fetch any missing metadata for modal review
+    await ensureVisionMetadata();
 
     renderReviewList();
-
-    // Fetch and render vision analysis
-    await fetchVisionAnalysis();
 }
 
-async function fetchVisionAnalysis() {
-    const analysisPanel = document.getElementById('vision-analysis-panel');
-    const loadingEl = document.getElementById('analysis-loading');
-    const contentEl = document.getElementById('analysis-content');
+async function ensureVisionMetadata() {
+    const missing = visionBoard.filter(id => !imageCache[id]);
+    if (missing.length > 0) {
+        try {
+            const res = await fetch(`${API_BASE}/images/details`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: missing })
+            });
+            const data = await res.json();
+            if (data.images) {
+                data.images.forEach(img => {
+                    imageCache[img.id] = img;
+                });
+            }
+        } catch (e) {
+            console.error("Metadata fetch error", e);
+        }
+    }
+}
 
-    if (visionBoard.length < 3) {
-        // Hide analysis for small boards
-        analysisPanel.classList.add('hidden');
+// --- REACTIVE ANALYSIS ENGINE ---
+
+function calculateLiveAnalysis(overrideImages = null) {
+    const selected = overrideImages || visionBoard.map(id => imageCache[id]).filter(Boolean);
+
+    if (selected.length === 0) {
+        // Reset UI if empty
+        document.getElementById('dominant-style').textContent = '---';
+        document.getElementById('materials-section').classList.add('hidden');
+        document.getElementById('privacy-val').textContent = '---';
+        document.getElementById('terrain-val').textContent = '---';
+        document.getElementById('balance-val').textContent = '---';
+        document.getElementById('spatial-intent-list').textContent = '---';
+        const list = document.getElementById('vision-review-list');
+        if (list) list.innerHTML = '';
         return;
     }
 
-    // Show panel and loading state
-    analysisPanel.classList.remove('hidden');
-    loadingEl.classList.remove('hidden');
-    contentEl.classList.add('hidden');
+    // --- 1. DATA AGGREGATION ---
 
-    try {
-        const res = await fetch(`${API_BASE}/vision/analyze`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image_ids: visionBoard })
+    // A. Style & Archetype (Dominant)
+    const styleCounts = {};
+    selected.forEach(img => {
+        if (img.design_style) {
+            styleCounts[img.design_style] = (styleCounts[img.design_style] || 0) + 1;
+        }
+    });
+    const dominantStyle = Object.entries(styleCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unclassified';
+
+    // B. Primary Materials (Consolidated List)
+    const materialCounts = {};
+    selected.forEach(img => {
+        const mats = img.material_palette && img.material_palette.length > 0
+            ? img.material_palette
+            : img.hardscape_materials || []; // Fallback
+
+        mats.forEach(m => {
+            const clean = m.trim().toUpperCase();
+            materialCounts[clean] = (materialCounts[clean] || 0) + 1;
         });
+    });
+    const topMaterials = Object.entries(materialCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([m]) => m);
 
-        if (!res.ok) throw new Error('Analysis failed');
+    // C. Site Dynamics (Privacy, Terrain, Balance)
+    const privacyCounts = {};
+    const terrainCounts = {};
+    const balanceCounts = {};
 
-        currentVisionAnalysis = await res.json();
+    selected.forEach(img => {
+        if (img.privacy_level) privacyCounts[img.privacy_level] = (privacyCounts[img.privacy_level] || 0) + 1;
+        if (img.terrain_type) terrainCounts[img.terrain_type] = (terrainCounts[img.terrain_type] || 0) + 1;
+        if (img.hardscape_ratio) balanceCounts[img.hardscape_ratio] = (balanceCounts[img.hardscape_ratio] || 0) + 1;
+    });
 
-        // Hide loading, show content
-        loadingEl.classList.add('hidden');
-        contentEl.classList.remove('hidden');
+    const getTop = (counts) => Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0].toUpperCase() || '---';
 
-        // Render analysis
-        renderVisionAnalysis(currentVisionAnalysis);
+    const dominantPrivacy = getTop(privacyCounts);
+    const dominantTerrain = getTop(terrainCounts);
+    const dominantBalance = getTop(balanceCounts);
 
-    } catch (e) {
-        console.error("Vision analysis error:", e);
-        loadingEl.innerHTML = '<p style="color: #ef4444;">Analysis unavailable</p>';
+    // D. Spatial Purpose (Top 2)
+    const spatialCounts = {};
+    selected.forEach(img => {
+        if (img.spatial_purpose) {
+            spatialCounts[img.spatial_purpose] = (spatialCounts[img.spatial_purpose] || 0) + 1;
+        }
+    });
+    const topSpatial = Object.entries(spatialCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([purpose]) => purpose.toUpperCase());
+
+
+    // --- 2. UI RENDERING ('Spec Sheet' Aesthetic) ---
+
+    // Style
+    document.getElementById('dominant-style').textContent = dominantStyle.toUpperCase();
+
+    // Primary Materials
+    const materialsList = document.getElementById('materials-list');
+    const materialsSec = document.getElementById('materials-section');
+    if (topMaterials.length > 0) {
+        materialsList.textContent = topMaterials.join(' • ');
+        materialsSec.classList.remove('hidden');
+    } else {
+        materialsSec.classList.add('hidden');
     }
+
+    // Site Dynamics
+    document.getElementById('privacy-val').textContent = dominantPrivacy;
+    document.getElementById('terrain-val').textContent = dominantTerrain;
+    document.getElementById('balance-val').textContent = dominantBalance;
+
+    // Spatial Intent
+    const spatialList = document.getElementById('spatial-intent-list');
+    spatialList.innerHTML = topSpatial.length > 0 ? topSpatial.join(' <span class="pipe">|</span> ') : '---';
+
+    // Sidebar Image Review
+    renderSidebarReview(selected);
+
+    // Update global for brief copying
+    window.currentVisionAnalysis = {
+        total_images: selected.length,
+        top_styles: [{ label: dominantStyle, avg: 1.0 }], // Simplified for now
+        top_elements: topSpatial.map(p => ({ label: p, count: 1 }))
+    };
 }
 
-function renderVisionAnalysis(analysis) {
-    // Render Themes
-    const themesContainer = document.getElementById('themes-container');
-    themesContainer.innerHTML = '';
-
-    if (analysis.themes && analysis.themes.length > 0) {
-        analysis.themes.slice(0, 3).forEach(theme => {
-            const chip = document.createElement('div');
-            chip.className = 'theme-chip';
-            chip.innerHTML = `
-                <span class="theme-name">${theme.name}</span>
-                <span class="theme-confidence">${Math.round(theme.confidence * 100)}%</span>
-            `;
-            themesContainer.appendChild(chip);
-        });
-    }
-
-    // Render Top Elements
-    const elementsContainer = document.getElementById('elements-container');
-    elementsContainer.innerHTML = '';
-
-    if (analysis.top_elements && analysis.top_elements.length > 0) {
-        analysis.top_elements.slice(0, 6).forEach(elem => {
-            const chip = document.createElement('div');
-            chip.className = 'element-chip';
-            chip.innerHTML = `
-                <span class="element-label">${elem.label}</span>
-                <span class="element-count">${elem.count}/${analysis.total_images} (${elem.percentage}%)</span>
-            `;
-            elementsContainer.appendChild(chip);
-        });
-    }
-
-    // Render Materials
-    const materialsContainer = document.getElementById('materials-container');
-    materialsContainer.innerHTML = '';
-
-    if (analysis.materials && analysis.materials.length > 0) {
-        analysis.materials.forEach(material => {
-            const chip = document.createElement('span');
-            chip.className = 'tag-chip';
-            chip.textContent = material;
-            materialsContainer.appendChild(chip);
-        });
-    } else {
-        materialsContainer.innerHTML = '<span class="tag-chip" style="opacity: 0.5;">No materials detected</span>';
-    }
-
-    // Render Planting
-    const plantingContainer = document.getElementById('planting-container');
-    plantingContainer.innerHTML = '';
-
-    if (analysis.planting_signals && analysis.planting_signals.length > 0) {
-        analysis.planting_signals.forEach(plant => {
-            const chip = document.createElement('span');
-            chip.className = 'tag-chip';
-            chip.textContent = plant;
-            plantingContainer.appendChild(chip);
-        });
-    } else {
-        plantingContainer.innerHTML = '<span class="tag-chip" style="opacity: 0.5;">No planting detected</span>';
-    }
-
-    // Render Insights
-    const insightsContainer = document.getElementById('insights-container');
-    insightsContainer.innerHTML = '';
-
-    if (analysis.unconscious_patterns && analysis.unconscious_patterns.length > 0) {
-        analysis.unconscious_patterns.forEach(insight => {
-            const item = document.createElement('div');
-            item.className = 'insight-item';
-            item.textContent = insight;
-            insightsContainer.appendChild(item);
-        });
-    }
+function renderSidebarReview(selected) {
+    const list = document.getElementById('vision-review-list');
+    if (!list) return; // In case we removed it from sidebar
+    list.innerHTML = '';
+    selected.forEach(img => {
+        const div = document.createElement('div');
+        div.className = 'review-item-mini';
+        div.innerHTML = `
+            <img src="/thumbnails/${img.thumbnail_path}">
+            <div class="review-details">
+                <span class="review-caption">${img.caption || 'Project Detail'}</span>
+                <span class="review-style">${img.design_style || ''}</span>
+            </div>
+            <button class="remove-btn-mini" onclick="window.toggleVisionFromCard(${img.id})">&times;</button>
+        `;
+        list.appendChild(div);
+    });
 }
+window.copyBriefToClipboard = function () {
+    if (!currentVisionAnalysis) return;
 
-window.copyBriefToClipboard = async function () {
-    if (!currentVisionAnalysis || !currentVisionAnalysis.sales_brief) {
-        alert('No analysis available to copy');
-        return;
-    }
+    let text = "DESIGN BRIEF - LYNCH LANDSCAPE\n";
+    text += "================================\n";
+    text += `Total Images: ${currentVisionAnalysis.total_images}\n\n`;
 
-    try {
-        await navigator.clipboard.writeText(currentVisionAnalysis.sales_brief);
+    text += "STYLE MATCH:\n";
+    currentVisionAnalysis.top_styles.forEach(s => {
+        text += `- ${s.label}: ${Math.round(s.avg * 100)}%\n`;
+    });
 
-        // Visual feedback
-        const btn = document.getElementById('copy-brief-btn');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '✓ Copied!';
-        btn.style.background = '#10b981';
+    text += "\nTOP ELEMENTS:\n";
+    currentVisionAnalysis.top_elements.forEach(e => {
+        text += `- ${e.label}: ${e.count} references\n`;
+    });
 
-        setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.style.background = '#111';
-        }, 2000);
-
-    } catch (e) {
-        console.error('Copy failed:', e);
-        alert('Failed to copy. Please try again.');
-    }
+    navigator.clipboard.writeText(text);
+    alert("Brief copied to clipboard!");
 }
 
 async function renderReviewList() {
-    visionReviewList.innerHTML = '';
+    const list = document.getElementById('modal-review-list');
+    list.innerHTML = '';
 
     visionBoard.forEach(id => {
-        let img = visionDetailsCache[id];
-        if (!img) img = currentResults.find(r => r.id === id);
+        const img = imageCache[id];
+        if (!img) return;
 
-        const thumbUrl = img ? `/thumbnails/${img.thumbnail_path}` : 'logo.jpg';
-        const currentNote = visionNotes[id] || "";
-
-        const item = document.createElement('div');
-        item.className = 'review-item';
-        item.innerHTML = `
-            <img src="${thumbUrl}" class="review-thumb">
-            <div class="review-inputs">
-                <input type="text" 
-                    placeholder="Why this one? (e.g. Love the firepit)" 
-                    class="note-input"
-                    data-id="${id}"
-                    value="${currentNote}"
-                    oninput="saveNoteLocal(${id}, this.value)">
+        const div = document.createElement('div');
+        div.className = 'review-item';
+        div.innerHTML = `
+            <img src="/thumbnails/${img.thumbnail_path}" class="review-thumb">
+            <div class="review-info">
+                <h5>${img.caption || 'Product Detail'}</h5>
+                <textarea onchange="window.saveNoteLocal(${img.id}, this.value)" 
+                    placeholder="Notes for this shot...">${visionNotes[img.id] || ''}</textarea>
             </div>
-            <button class="remove-btn" onclick="removeFromVision(${id})">&times;</button>
+            <button class="remove-btn" onclick="window.removeFromVision(${img.id})">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
         `;
-        visionReviewList.appendChild(item);
+        list.appendChild(div);
     });
 }
 
@@ -809,3 +1029,103 @@ try {
     console.error("Init failed:", err);
     alert("Application Error: " + err.message);
 }
+
+// --- SINGLE PATH MOMENTUM SYSTEM ---
+
+function handleArchetypeClick(label) {
+    console.log("Archetype Clicked:", label);
+    activeArchetype = label;
+    activeChips.clear();
+
+    // Cinematic Glide: Smooth scroll to the top of the Filter Bar
+    const header = document.querySelector('.header');
+    if (header) {
+        const top = header.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+    }
+
+    // UI: Render chips above grid
+    renderSmartChips();
+
+    // Action: Trigger unified search
+    performSearch();
+
+    // Vision: Update meter
+    updateVisionMeter();
+}
+
+function renderSmartChips() {
+    const container = document.getElementById('smart-chips-container');
+    if (!container || !activeArchetype) return;
+
+    const config = ARCHETYPE_CONFIG[activeArchetype];
+    if (!config) return;
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="context-bridge" style="width: 100%; margin-bottom: 1.5rem; animation: fadeIn 0.8s ease-out;">
+            <h3 style="font-family: 'Playfair Display', serif; font-size: 1.75rem; color: #081D34; margin: 0 0 4px 0;">Exploring: ${activeArchetype}</h3>
+            <p style="font-size: 0.875rem; color: #6b7280; font-weight: 400; margin: 0;">Select a filter below OR type your own specific vision (e.g., "Infinity Edge")</p>
+        </div>
+        <div style="font-size: 0.7rem; font-weight: 700; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; width: 100%; letter-spacing: 0.05em;">
+            Suggested Refinements:
+        </div>
+        ${config.suggested_chips.map(chip => `
+            <div class="smart-chip ${activeChips.has(chip) ? 'active' : ''}" 
+                 onclick="window.toggleChip('${chip}')">
+                ${chip}
+            </div>
+        `).join('')}
+    `;
+}
+
+window.toggleChip = function (chip) {
+    if (activeChips.has(chip)) {
+        activeChips.delete(chip);
+    } else {
+        activeChips.add(chip);
+    }
+    renderSmartChips();
+    performSearch();
+};
+
+function updateVisionMeter() {
+    let score = 0;
+    if (activeArchetype) score += 20;
+    score += Math.min(visionBoard.length * 20, 60);
+    if (hasViewedProject) score += 20;
+
+    const container = document.getElementById('vision-meter-container');
+    if (!container) return;
+
+    let stageClass = 'low';
+    let statusText = 'Start your vision';
+    if (score >= 100) {
+        stageClass = 'high';
+        statusText = 'Vision Complete';
+    } else if (score >= 50) {
+        stageClass = 'mid';
+        statusText = 'Keep going...';
+    }
+
+    container.innerHTML = `
+        <div class="meter-label">
+            <span>Vision Strength</span>
+            <span>${score}%</span>
+        </div>
+        <div class="meter-track">
+            <div class="meter-fill ${stageClass}" style="width: ${score}%"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+            <span style="font-size: 0.65rem; color: #6b7280;">${statusText}</span>
+            <button id="finalize-brief-btn" class="finalize-btn ${score >= 100 ? 'active' : ''}" 
+                    ${score >= 100 ? '' : 'disabled'}
+                    onclick="window.copyBriefToClipboard()">
+                Finalize Brief
+            </button>
+        </div>
+    `;
+}
+
+// Final Step: Populate meter on load
+updateVisionMeter();
