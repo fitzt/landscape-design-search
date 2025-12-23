@@ -1030,6 +1030,32 @@ try {
     alert("Application Error: " + err.message);
 }
 
+// --- MOBILE DRAWER LOGIC ---
+window.toggleMobileDrawer = function () {
+    const sidebar = document.getElementById('analysis-sidebar');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (!sidebar || !backdrop) return;
+
+    sidebar.classList.toggle('active');
+    backdrop.classList.toggle('active');
+
+    // Force analysis update if opening
+    if (sidebar.classList.contains('active')) {
+        calculateLiveAnalysis();
+    }
+};
+
+// Close drawer when tapping backdrop
+const backdrop = document.getElementById('drawer-backdrop');
+if (backdrop) {
+    backdrop.onclick = function () {
+        const sidebar = document.getElementById('analysis-sidebar');
+        if (sidebar) sidebar.classList.remove('active');
+        this.classList.remove('active');
+    };
+}
+
+
 // --- SINGLE PATH MOMENTUM SYSTEM ---
 
 function handleArchetypeClick(label) {

@@ -16,6 +16,15 @@
 </head>
 
 <body>
+    <!-- Mobile Drawer Components -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
+    <button id="mobile-drawer-toggle" class="mobile-fab" onclick="window.toggleMobileDrawer()">
+        <span>View Design Intelligence</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20v-6M6 20V10M18 20V4" />
+        </svg>
+    </button>
+
     <div class="app-container">
         <header class="header">
             <div class="header-brand">
@@ -91,7 +100,7 @@
             </div>
 
             <!-- Persistent Analysis Sidebar -->
-            <aside id="analysis-sidebar" class="analysis-sidebar hidden">
+            <aside id="analysis-sidebar" class="analysis-sidebar sidebar hidden">
                 <div id="vision-analysis-panel" class="vision-analysis">
                     <div class="analysis-header">
                         <h4>Design Intelligence <span
