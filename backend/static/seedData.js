@@ -1,12 +1,12 @@
 export const SEED_CONFIG = [
-    { id: 2351, label: "The Modernist" },
-    { id: 2277, label: "The Entertainer" },
-    { id: 2265, label: "The Naturalist" },
-    { id: 2228, label: "The Hearth" },
-    { id: 2298, label: "The Architectural" },
-    { id: 2313, label: "The Sanctuary" },
-    { id: 2340, label: "The Minimalist" },
-    { id: 2349, label: "The Traditionalist" }
+    { id: 1535, label: "The Modernist" },
+    { id: 1959, label: "The Entertainer" },
+    { id: 1957, label: "The Naturalist" },
+    { id: 1714, label: "The Hearth" },
+    { id: 1436, label: "The Architectural" },
+    { id: 1916, label: "The Sanctuary" },
+    { id: 1743, label: "The Minimalist" },
+    { id: 1633, label: "The Traditionalist" }
 ];
 
 export const ARCHETYPE_CONFIG = {
