@@ -1,0 +1,122 @@
+{
+    "company_profile": {
+        "name": "Leahy Landscaping, Inc.",
+        "founded": 1984,
+        "hq_city": "Lynn",
+        "service_area": [
+            "Lynn",
+            "Lynnfield",
+            "Salem",
+            "Marblehead",
+            "Swampscott",
+            "Manchester-by-the-Sea",
+            "Beverly Farms",
+            "Gloucester",
+            "Newburyport",
+            "Nahant",
+            "Peabody",
+            "Essex"
+        ],
+        "trust_badges": [
+            "Commercial & Residential",
+            "Est. 1984",
+            "Thomas Butler Park Renovator"
+        ]
+    },
+    "fact_cards": [
+        {
+            "id": "material_granite",
+            "category": "Material",
+            "triggers": [
+                "granite",
+                "steps",
+                "hardscape",
+                "stone"
+            ],
+            "title": "Coastal Durability: Granite",
+            "scientific_fact": "Granite is an igneous rock with extreme density, making it virtually impervious to salt spray corrosion.",
+            "geo_template": "For homes in **{city}**, we often recommend granite over poured concrete because it withstands the coastal salt air and freeze-thaw cycles of Zone 6b.",
+            "visual_tags": [
+                "granite",
+                "steps",
+                "stone_pallet"
+            ]
+        },
+        {
+            "id": "solution_retaining_wall",
+            "category": "Solution",
+            "triggers": [
+                "slope",
+                "erosion",
+                "hill",
+                "wall",
+                "grade"
+            ],
+            "title": "Erosion Control",
+            "scientific_fact": "Gravity retaining walls utilize their own weight and proper drainage aggregate to hold back soil pressure and prevent runoff.",
+            "geo_template": "In hilly areas like **{city}**, stabilizing slopes is critical to protecting your foundation. Proper drainage behind the wall prevents the 'heaving' common in New England winters.",
+            "visual_tags": [
+                "retaining_wall",
+                "excavation",
+                "drainage_pipe"
+            ]
+        },
+        {
+            "id": "botany_hydrangea",
+            "category": "Planting",
+            "triggers": [
+                "flower",
+                "garden",
+                "hydrangea",
+                "planting",
+                "bloom"
+            ],
+            "title": "Acidic Soil Blooms",
+            "scientific_fact": "Hydrangea macrophylla blooms shift blue in acidic soils (pH < 5.5) and pink in alkaline soils.",
+            "geo_template": "The naturally acidic soil of **Essex County** creates the deep blue hydrangea blooms iconic to the North Shore. We select cultivars proven to survive our winters.",
+            "visual_tags": [
+                "hydrangea",
+                "garden",
+                "flower_bed"
+            ]
+        },
+        {
+            "id": "solution_drainage",
+            "category": "Solution",
+            "triggers": [
+                "water",
+                "flooding",
+                "wet",
+                "drainage",
+                "mud"
+            ],
+            "title": "Water Management",
+            "scientific_fact": "Hydrostatic pressure from standing water is the leading cause of basement leaks and hardscape failure.",
+            "geo_template": "Managing the spring thaw is a priority for properties in **{city}**. We install dry wells and french drains to redirect water away from your home's foundation.",
+            "visual_tags": [
+                "drainage",
+                "pipe",
+                "gravel",
+                "trench"
+            ]
+        },
+        {
+            "id": "material_pavers",
+            "category": "Material",
+            "triggers": [
+                "pavers",
+                "patio",
+                "walkway",
+                "driveway"
+            ],
+            "title": "Flexible Pavement Systems",
+            "scientific_fact": "Interlocking pavers allow for ground movement without cracking, unlike rigid concrete slabs.",
+            "geo_template": "Because the ground in **{city}** freezes and expands, pavers are a smart investment. They 'flex' with the frost heave rather than cracking like asphalt or concrete.",
+            "visual_tags": [
+                "paver",
+                "laying_stone",
+                "patio_base"
+            ]
+        }
+    ]
+}
