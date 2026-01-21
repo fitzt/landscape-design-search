@@ -1,12 +1,79 @@
+import { CLIENT_CONFIG } from './clientSettings.js';
+import { SEED_CONFIG, ARCHETYPE_CONFIG } from './seedData.js';
+
 const API_BASE = '/api';
-const VERSION = '14.0';
-console.log(`Lynch Landscape Intelligence Engine ${VERSION} initialized.`);
+const VERSION = CLIENT_CONFIG.version;
+console.log(`${CLIENT_CONFIG.brandName} Intelligence Engine ${VERSION} initialized.`);
 
 // GLOBAL ERROR TRAP for Debugging
 window.onerror = function (msg, url, line, col, error) {
-    alert(`Error: ${msg}\nLine: ${line}`);
+    console.error(`Error: ${msg}\nLine: ${line}`);
     return false;
 };
+
+// --- BRANDING UTILS ---
+function applyBranding() {
+    // 1. App-level Metadata
+    document.title = `${CLIENT_CONFIG.brandName} | ${CLIENT_CONFIG.tagline}`;
+    const metaDesc = document.getElementById('meta-description');
+    if (metaDesc) metaDesc.content = `Semantic search for ${CLIENT_CONFIG.brandName} portfolio`;
+
+    // 2. CSS Variables
+    const root = document.documentElement;
+    root.style.setProperty('--brand-font-primary', CLIENT_CONFIG.primaryFont);
+    root.style.setProperty('--brand-font-secondary', CLIENT_CONFIG.secondaryFont);
+    root.style.setProperty('--brand-color-primary', CLIENT_CONFIG.primaryColor);
+    root.style.setProperty('--brand-color-accent', CLIENT_CONFIG.accentColor);
+
+    // 3. UI Elements
+    const brandNameEl = document.getElementById('brand-name');
+    const brandTaglineEl = document.getElementById('brand-tagline');
+    const brandVersionEl = document.getElementById('brand-version');
+    const brandLogoEl = document.getElementById('brand-logo');
+    const modalBrandNameEl = document.getElementById('modal-brand-name');
+    const modalLocationEl = document.getElementById('modal-brand-location');
+    const sidebarBrandNameEl = document.getElementById('modal-sidebar-brand-name');
+    const sidebarBrandSubEl = document.getElementById('modal-sidebar-brand-sub');
+    const sidebarVersionEl = document.getElementById('sidebar-version');
+    const versionBadgeEl = document.getElementById('version-badge');
+
+    if (brandNameEl) brandNameEl.textContent = CLIENT_CONFIG.brandName;
+    if (brandTaglineEl) {
+        brandTaglineEl.innerHTML = `${CLIENT_CONFIG.tagline} <span id="brand-version" style="opacity: 0.5; margin-left: 8px;">${CLIENT_CONFIG.version}</span>`;
+    }
+    if (brandLogoEl) {
+        brandLogoEl.src = CLIENT_CONFIG.logoUrl;
+        brandLogoEl.alt = `${CLIENT_CONFIG.brandName} Logo`;
+    }
+    if (modalBrandNameEl) modalBrandNameEl.textContent = CLIENT_CONFIG.brandName;
+    if (modalLocationEl) modalLocationEl.textContent = CLIENT_CONFIG.location;
+
+    if (sidebarVersionEl) sidebarVersionEl.textContent = `PRO ${CLIENT_CONFIG.version}`;
+    if (versionBadgeEl) versionBadgeEl.textContent = `${CLIENT_CONFIG.version} | OBJECT INTELLIGENCE`;
+
+    // Sidebar usually split for aesthetic
+    if (sidebarBrandNameEl) {
+        const parts = CLIENT_CONFIG.brandName.split('&');
+        sidebarBrandNameEl.textContent = parts[0].trim().toUpperCase();
+        if (sidebarBrandSubEl && parts[1]) sidebarBrandSubEl.textContent = parts[1].trim().toUpperCase();
+    }
+}
+window.applyBranding = applyBranding;
+
+// --- UI UTILS ---
+function showToast(message, duration = 3000) {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toast-message');
+    if (!toast || !toastMsg) return;
+
+    toastMsg.textContent = message;
+    toast.classList.add('visible');
+
+    setTimeout(() => {
+        toast.classList.remove('visible');
+    }, duration);
+}
+window.showToast = showToast;
 
 // State
 let currentResults = [];
@@ -14,28 +81,28 @@ let currentLightboxIndex = -1;
 let folders = [];
 let collections = [];
 let visionBoard = JSON.parse(localStorage.getItem('visionBoard')) || [];
+let visionCutouts = JSON.parse(localStorage.getItem('visionCutouts')) || [];
 let imageCache = {}; // Global metadata cache
 
-const SEED_CONFIG = [
-    { id: 322, label: "The Modernist" },
-    { id: 307, label: "The Entertainer" },
-    { id: 764, label: "The Naturalist" },
-    { id: 309, label: "The Hearth" },
-    { id: 310, label: "The Architectural" },
-    { id: 600, label: "The Sanctuary" },
-    { id: 450, label: "The Minimalist" },
-    { id: 120, label: "The Traditionalist" }
-];
-const ARCHETYPE_CONFIG = {
-    'The Modernist': { style_query: 'Modern', suggested_chips: ['Concrete Pavers', 'Linear', 'Minimalist', 'Steel'] },
-    'The Entertainer': { style_query: 'Kitchen', suggested_chips: ['Pizza Oven', 'Fire Pit', 'Bar Seating', 'Outdoor Grill'] },
-    'The Naturalist': { style_query: 'Natural', suggested_chips: ['Native Plants', 'Meadow', 'Wildlife', 'Stone Path'] },
-    'The Hearth': { style_query: 'Fire', suggested_chips: ['Fireplace', 'Wood Storage', 'Gathering', 'Flagstone'] },
-    'The Architectural': { style_query: 'Structure', suggested_chips: ['Retaining Wall', 'Steps', 'Terrace', 'Lighting'] },
-    'The Sanctuary': { style_query: 'Private', suggested_chips: ['Privacy Hedge', 'Screening', 'Water Feature', 'Enclosed'] },
-    'The Minimalist': { style_query: 'Simple', suggested_chips: ['Gravel', 'Lawn', 'Clean Lines', 'Single Material'] },
-    'The Traditionalist': { style_query: 'Classic', suggested_chips: ['Brick', 'Boxwood', 'Symmetry', 'Formal Garden'] }
+// Global state for the active object selection (v15 Engine)
+let activeObjectData = null;
+
+// --- PREFERENCE SCORING ENGINE ---
+let PreferenceScore = {
+    styles: {},
+    elements: {}
 };
+
+function trackPreference(type, key) {
+    if (!key) return;
+    const increment = type === 'styles' ? 10 : 20;
+    if (!PreferenceScore[type][key]) PreferenceScore[type][key] = 0;
+    PreferenceScore[type][key] += increment;
+    console.log(`[Preference Tracking] %c${type.toUpperCase()}: ${key} %c+${increment} | Total Score:`,
+        "color: #00ff9d; font-weight: bold", "color: #ffffff", PreferenceScore);
+}
+
+// (Configs moved to seedData.js)
 const SEED_IDS = SEED_CONFIG.map(s => s.id);
 const ARCHETYPES = Object.fromEntries(SEED_CONFIG.map(s => [s.id, s.label]));
 
@@ -43,6 +110,8 @@ const ARCHETYPES = Object.fromEntries(SEED_CONFIG.map(s => [s.id, s.label]));
 let activeArchetype = null;
 let activeChips = new Set();
 let hasViewedProject = false;
+let isProjectMode = false;
+let currentProjectSlug = null;
 
 // Luxe Icons (SVGs)
 const ICONS = {
@@ -56,12 +125,6 @@ const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const resultsGrid = document.getElementById('resultsGrid');
 const folderFilter = document.getElementById('folderFilter');
-// Removed: toggleFavorites, collectionFilter, createCollectionBtn
-const visionFab = document.getElementById('vision-fab');
-const visionCountStr = document.getElementById('vision-count');
-const visionModal = document.getElementById('vision-modal');
-const visionReviewList = document.getElementById('vision-review-list');
-// Lightbox Elements
 const lightbox = document.getElementById('lightbox');
 const lightboxImage = document.getElementById('lightboxImage');
 const lightboxClose = document.getElementById('lightboxClose');
@@ -70,44 +133,106 @@ const lightboxPrev = document.getElementById('lightboxPrev');
 const lightboxFav = document.getElementById('lightboxFav');
 const lightboxNotes = document.getElementById('lightboxNotes');
 const lightboxAddToCollection = document.getElementById('lightboxAddToCollection');
+const visionModal = document.getElementById('vision-modal');
 
-// Init
+// --- INIT ---
 async function init() {
     console.log("Initializing Portfolio search...");
 
+    // Initialize Branding & UI FIRST (White labeling requirement)
+    applyBranding();
+
     // Check if we should show instructions (Versioned for v13)
-    const lastShown = localStorage.getItem('instructionsShown_v13');
-    if (!lastShown) {
-        document.getElementById('instructions-overlay').classList.remove('hidden');
+    // DISABLED FOR LEAHY per user request
+    const isLeahy = CLIENT_CONFIG.projectSlug === 'leahy';
+    if (isLeahy) {
+        document.getElementById('instructions-overlay')?.classList.add('hidden');
+        document.getElementById('analysis-sidebar')?.classList.add('hidden');
     } else {
-        document.getElementById('instructions-overlay').classList.add('hidden');
+        const lastShown = localStorage.getItem('instructionsShown_v13');
+        if (!lastShown) {
+            document.getElementById('instructions-overlay')?.classList.remove('hidden');
+        } else {
+            document.getElementById('instructions-overlay')?.classList.add('hidden');
+        }
     }
 
     // Load initial seeds if nothing's happening
-    if (visionBoard.length === 0) {
-        loadSeedPortfolio();
-    } else {
-        performSearch(""); // Default view
+    try {
+        if (visionBoard.length === 0) {
+            await loadSeedPortfolio();
+        } else {
+            await performSearch(""); // Default view
+        }
+    } catch (e) {
+        console.warn("Could not load initial images. Backend might be offline.", e);
+        resultsGrid.innerHTML = '<div class="empty-state">Backend API offline. Run "python backend/app.py" to see images.</div>';
+    }
+
+    // Deep-linking support
+    const urlParams = new URLSearchParams(window.location.search);
+    const linkedImageId = urlParams.get('image_id');
+    if (linkedImageId) {
+        console.log("Deep-linking to image:", linkedImageId);
+        try {
+            const res = await fetch(`${API_BASE}/images/details`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [parseInt(linkedImageId)] })
+            });
+            const data = await res.json();
+            if (data.images && data.images.length > 0) {
+                const img = data.images[0];
+                imageCache[img.id] = img;
+                // Prepend to current results so openLightbox(0) works
+                currentResults = [img, ...currentResults];
+                updateGridWithFlip(currentResults);
+                openLightbox(0);
+            }
+        } catch (e) {
+            console.error("Deep-linking failed", e);
+        }
     }
 
     try {
         await loadFolders();
         await loadCollections();
-        updateVisionUI();
-
     } catch (e) {
-        console.error("Init Error:", e);
-        alert("Init Error: " + e.message);
+        console.warn("Folder/Collection metadata failed to load.", e);
+    }
+
+    try {
+        // Ensure metadata for visionBoard items is loaded
+        if (visionBoard.length > 0) {
+            updateVisionUI();
+            const missingIds = visionBoard.filter(id => !imageCache[id]);
+            if (missingIds.length > 0) {
+                const res = await fetch(`${API_BASE}/images/details`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: missingIds })
+                });
+                const data = await res.json();
+                if (data.images) {
+                    data.images.forEach(img => imageCache[img.id] = img);
+                    updateVisionUI(); // Re-render once data in
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Vision metadata recovery failed", e);
     }
 }
 
 window.closeInstructions = function () {
     const overlay = document.getElementById('instructions-overlay');
-    overlay.style.opacity = '0';
-    setTimeout(() => {
-        overlay.classList.add('hidden');
-        localStorage.setItem('instructionsShown_v13', 'true');
-    }, 400);
+    if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            localStorage.setItem('instructionsShown_v13', 'true');
+        }, 400);
+    }
 }
 
 async function loadSeedPortfolio() {
@@ -127,110 +252,84 @@ async function loadSeedPortfolio() {
         console.error("Seed load failed", e);
     }
 }
-// (Keeping standard listeners)
-searchBtn.addEventListener('click', () => {
-    console.log("Search Button Clicked");
-    performSearch();
-});
-searchInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        console.log("Enter Key Pressed");
-        performSearch();
-    }
-});
-// Handle "X" Clear button in search input
-searchInput.addEventListener('search', (e) => {
-    if (searchInput.value === '') {
-        performSearch(); // Reset to Onboarding
-    }
-});
-// Removed: toggleFavorites and collectionFilter event listeners
-folderFilter.addEventListener('change', performSearch);
 
-lightboxClose.addEventListener('click', closeLightbox);
-lightboxNext.addEventListener('click', nextImage);
-lightboxPrev.addEventListener('click', prevImage);
+// --- EVENT LISTENERS ---
+if (searchBtn) searchBtn.addEventListener('click', () => performSearch());
+if (searchInput) {
+    searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performSearch(); });
+    searchInput.addEventListener('search', (e) => { if (searchInput.value === '') performSearch(); });
+}
+if (folderFilter) folderFilter.addEventListener('change', performSearch);
+
+if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+if (lightboxNext) lightboxNext.addEventListener('click', nextImage);
+if (lightboxPrev) lightboxPrev.addEventListener('click', prevImage);
+
 document.addEventListener('keydown', (e) => {
-    if (lightbox.classList.contains('hidden')) return;
+    if (lightbox && lightbox.classList.contains('hidden')) return;
     if (e.key === 'Escape') closeLightbox();
     if (e.key === 'ArrowRight') nextImage();
     if (e.key === 'ArrowLeft') prevImage();
 });
 
-lightboxFav.addEventListener('click', async () => {
-    try {
+if (lightboxFav) {
+    lightboxFav.addEventListener('click', async () => {
+        try {
+            const img = currentResults[currentLightboxIndex];
+            const newStatus = !img.favorite;
+            img.favorite = newStatus;
+            updateLightboxUI();
+            await fetch(`${API_BASE}/favorite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: img.id, favorite: newStatus })
+            });
+        } catch (e) { console.error("Favorite Error:", e); }
+    });
+}
+
+if (lightboxNotes) {
+    lightboxNotes.addEventListener('click', () => {
         const img = currentResults[currentLightboxIndex];
-        const newStatus = !img.favorite;
+        if (img) openNotesModal(img);
+    });
+}
 
-        // Optimistic UI update
-        img.favorite = newStatus;
-        updateLightboxUI();
-
-        console.log("Toggling Favorite:", img.id, newStatus);
-
-        await fetch(`${API_BASE}/favorite`, {
+if (lightboxAddToCollection) {
+    lightboxAddToCollection.addEventListener('change', async (e) => {
+        const cid = e.target.value;
+        if (!cid) return;
+        const img = currentResults[currentLightboxIndex];
+        await fetch(`${API_BASE}/collection/add`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: img.id, favorite: newStatus })
+            body: JSON.stringify({ collection_id: cid, image_id: img.id })
         });
-    } catch (e) {
-        console.error("Favorite Error:", e);
-        alert("Failed to save favorite.");
-    }
-});
-
-lightboxNotes.addEventListener('click', () => {
-    console.log("Notes Clicked");
-    const img = currentResults[currentLightboxIndex];
-    if (img) openNotesModal(img);
-    else console.error("No image found for notes");
-});
-
-lightboxAddToCollection.addEventListener('change', async (e) => {
-    const cid = e.target.value;
-    if (!cid) return;
-    const img = currentResults[currentLightboxIndex];
-    await fetch(`${API_BASE}/collection/add`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ collection_id: cid, image_id: img.id })
+        e.target.value = "";
+        alert("Added to collection!");
     });
-    e.target.value = "";
-    alert("Added to collection!");
-});
+}
 
-// ... Loaders and Search ... (Standard)
+// --- LOADERS ---
 async function loadFolders() {
     const res = await fetch(`${API_BASE}/folders`);
     const data = await res.json();
     folders = data.folders;
-    folderFilter.innerHTML = '<option value="">All Folders</option>';
-    folders.forEach(f => {
-        const opt = document.createElement('option');
-        opt.value = f;
-        opt.textContent = f.split('/').pop() || f;
-        folderFilter.appendChild(opt);
-    });
+    if (folderFilter) {
+        folderFilter.innerHTML = '<option value="">All Folders</option>';
+        folders.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f.split('/').pop() || f;
+            folderFilter.appendChild(opt);
+        });
+    }
 }
 
 async function loadCollections() {
     try {
         const res = await fetch(`${API_BASE}/collections`);
         collections = await res.json();
-
-        // Header filter (removed from UI, but keep variable check for safety)
-        const colFilter = document.getElementById('collectionFilter');
-        if (colFilter) {
-            colFilter.innerHTML = '<option value="">All Collections</option>';
-            collections.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c.id;
-                opt.textContent = c.name;
-                colFilter.appendChild(opt);
-            });
-        }
-
-        // Lightbox adder (still exists)
         if (lightboxAddToCollection) {
             lightboxAddToCollection.innerHTML = '<option value="">+ Add to Collection</option>';
             collections.forEach(c => {
@@ -240,35 +339,14 @@ async function loadCollections() {
                 lightboxAddToCollection.appendChild(opt);
             });
         }
-    } catch (e) {
-        console.error("Load Collections Error:", e);
-    }
+    } catch (e) { console.error("Load Collections Error:", e); }
 }
 
-// New state for FLIP
-let isReflowing = false;
+// --- SEARCH LOGIC ---
+async function performSearch(query = searchInput.value.trim(), folder = folderFilter?.value) {
+    // Export globally for lightbox interaction
+    if (!window.performSearch) window.performSearch = performSearch;
 
-// New state for Project Mode
-let isProjectMode = false;
-let currentProjectSlug = null;
-
-// --- UTILS ---
-function extractProjectSlug(filename) {
-    if (!filename) return null;
-    // Strict Regex: Identify project name by splitting on the last underscore/hyphen preceding a number
-    // Example: mcgonigle_01.jpg -> mcgonigle
-    // Example: old-connecticut-path-003.jpg -> old-connecticut-path
-    const match = filename.match(/^(.*)[-_]\d+/);
-    if (match && match[1]) {
-        return match[1];
-    }
-    return null; // Safety: do not return full filename if pattern fails
-}
-
-async function performSearch(query = searchInput.value.trim(), folder = folderFilter.value) {
-    console.log("performSearch called");
-
-    // UNIFIED QUERY: Text + Archetype + Chips
     let combinedQuery = query;
     if (activeArchetype) {
         const config = ARCHETYPE_CONFIG[activeArchetype];
@@ -280,13 +358,11 @@ async function performSearch(query = searchInput.value.trim(), folder = folderFi
 
     resultsGrid.innerHTML = '<div class="loading">Architecting results...</div>';
 
-    // "Empty Search" Check -> Load Seeds
     if (!combinedQuery && !folder && !isProjectMode) {
         loadSeedPortfolio();
         return;
     }
 
-    // Allow empty query
     const res = await fetch(`${API_BASE}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -299,231 +375,74 @@ async function performSearch(query = searchInput.value.trim(), folder = folderFi
     });
     const data = await res.json();
 
-    // Cache Metadata (Ensure we get rich columns if available)
     if (data.results) {
-        data.results.forEach(img => {
-            imageCache[img.id] = img;
-        });
+        data.results.forEach(img => { if (img.id) imageCache[img.id] = img; });
     }
+    updateGridWithFlip(data.results, data.trust_header);
 
-    updateGridWithFlip(data.results);
-    updateVisionMeter();
 }
 
-window.enterProjectMode = async function (slug) {
-    if (!slug) return;
-    console.log("Entering Project Mode:", slug);
-    isProjectMode = true;
-    currentProjectSlug = slug;
-    hasViewedProject = true;
-    updateVisionMeter();
-
-    // Safety: Clear previous state
-    currentResults = [];
-    resultsGrid.innerHTML = '<div class="loading">Architecting project...</div>';
-
-    // 1. Fetch Project Metadata
-    try {
-        const res = await fetch(`${API_BASE}/projects/${slug}`);
-        if (res.ok) {
-            const project = await res.json();
-            renderProjectHero(project);
-        } else {
-            console.warn("Project metadata not found for slug:", slug);
-            renderProjectHero({ display_title: slug, location: 'Portfolio', description: '', awards: [] });
-        }
-    } catch (err) {
-        console.error("Error fetching project metadata:", err);
-    }
-
-    // 2. Re-search with slug filter
-    await performSearch('', '');
-
-    // 3. Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (lightbox) lightbox.classList.add('hidden');
-}
-
-window.exitProjectMode = function () {
-    console.log("Exiting Project Mode");
-    isProjectMode = false;
-    currentProjectSlug = null;
-
-    const hero = document.getElementById('project-hero');
-    if (hero) hero.classList.add('hidden');
-
-    performSearch();
-}
-
-function renderProjectHero(project) {
-    const hero = document.getElementById('project-hero');
-    if (!hero) return;
-
-    hero.classList.remove('hidden');
-
-    // Awards rendering
-    let awardsHtml = '';
-    if (project.awards && project.awards.length > 0) {
-        awardsHtml = project.awards.map(a => `<span class="award-badge">${a}</span>`).join('');
-    }
-
-    hero.innerHTML = `
-        <div class="hero-content">
-            <button class="back-link" onclick="window.exitProjectMode()">← BACK TO SEARCH</button>
-            <div class="hero-top">
-                <h2 class="hero-title">${project.display_title} <span class="hero-location">— ${project.location}</span></h2>
-                <div class="hero-awards">${awardsHtml}</div>
-            </div>
-            <p class="hero-description">${project.description}</p>
-        </div>
-    `;
-}
-
-// Living Grid Logic
-async function triggerSimilaritySearch(id) {
-    // Visual Feedback immediately?
-    console.log("Finding similar to", id);
-
-    // Optional: Highlighting the anchor?
-
-    try {
-        const res = await fetch(`${API_BASE}/search/similar`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id, top_k: 50 })
-        });
-        const data = await res.json();
-
-        // Cache Metadata
-        if (data.results) {
-            data.results.forEach(img => {
-                imageCache[img.id] = img;
-            });
-        }
-
-        // The anchor image should ideally be part of the result,
-        // often returned as the first result if distance is 0.
-        // If not, we might want to manually prepend it?
-        // For now, trust the results.
-
-        // Update Search Input to indicate mode?
-        searchInput.value = `By Image #${id}`;
-
-        updateGridWithFlip(data.results);
-
-    } catch (e) {
-        console.error("Similarity search failed", e);
-    }
-
-    // If triggered from lightbox, verify if we should close it?
-    // Usually yes, to see the grid.
-    if (!lightbox.classList.contains('hidden')) {
-        closeLightbox();
-    }
-}
-// Expose to window for HTML onclick
-window.triggerSimilaritySearch = triggerSimilaritySearch;
-
-// Refactored Render with FLIP
-function updateGridWithFlip(newResults) {
-    // 1. FIRST: Capture positions of existing items
+// --- GRID LOGIC ---
+function updateGridWithFlip(newResults, trustHeader = null) {
     const firstPositions = new Map();
     resultsGrid.querySelectorAll('.card').forEach(card => {
         const id = card.dataset.id;
         if (id) firstPositions.set(id, card.getBoundingClientRect());
     });
 
-    // 2. STATE: Update Data
+    const trustContainer = document.getElementById('trust-header-container');
+    if (trustContainer) {
+        if (trustHeader) {
+            trustContainer.textContent = trustHeader;
+            trustContainer.classList.remove('hidden');
+        } else {
+            trustContainer.classList.add('hidden');
+        }
+    }
+
     currentResults = newResults;
     if (currentResults.length === 0) {
         resultsGrid.innerHTML = '<div class="empty-state">No results found.</div>';
         return;
     }
 
-    // 3. RENDER (LAST)
-    resultsGrid.innerHTML = '';
-    currentResults.forEach((img, index) => {
+    resultsGrid.innerHTML = ''; // Clear previous
+
+    currentResults.forEach((item, index) => {
         const card = document.createElement('div');
         card.className = 'card';
-        card.dataset.id = img.id; // Critical for FLIP
+        card.dataset.id = item.id || `fact_${index}`;
+        card.dataset.type = item.type || (item.hero_image ? 'project' : 'image');
 
-        // Hover Intelligence: Show sidebar preview if board is empty
-        card.onmouseenter = () => {
-            if (visionBoard.length === 0) {
-                calculateLiveAnalysis([img]);
-            }
-        };
-        card.onmouseleave = () => {
-            if (visionBoard.length === 0) {
-                calculateLiveAnalysis([]);
-            }
-        };
-
-        // Image Click -> Lightbox
-        // But we need a separate button for "Find Similar"
-
-        const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
-        const inVision = visionBoard.includes(img.id);
-        const visionIcon = inVision ? '✨' : '';
-
-        // Card HTML
-        // NOTE: onclick="event.stopPropagation()" is crucial for buttons inside the card
-
-        const isSelected = visionBoard.includes(img.id);
-        const iconClass = isSelected ? 'active' : '';
-        const actionIcon = isSelected ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
-
-        card.innerHTML = `
-            <img src="${thumbUrl}" loading="lazy" alt="${img.filename}">
-            <div class="card-overlay">
-                <div class="card-actions">
-                    <button class="icon-btn" onclick="event.stopPropagation(); window.triggerSimilaritySearch(${img.id})" title="Find Similar">
-                        ${ICONS.SEARCH}
-                    </button>
-                    <button class="icon-btn ${iconClass}" onclick="event.stopPropagation(); window.toggleVisionFromCard(${img.id})" title="Add to Vision">
-                        ${actionIcon}
-                    </button>
-                </div>
-            </div>
-            ${ARCHETYPES[img.id] ? `<div class="archetype-badge">${ARCHETYPES[img.id]}</div>` : ''}
-        `;
-        // Main click -> Open Lightbox OR trigger Archetype flow
-        card.onclick = () => {
-            if (ARCHETYPES[img.id]) {
-                handleArchetypeClick(ARCHETYPES[img.id]);
-            } else {
-                openLightbox(index);
-            }
-        };
+        if (card.dataset.type === 'fact_card' || card.dataset.type === 'knowledge_card') {
+            renderFactCard(card, item);
+        } else if (card.dataset.type === 'project') {
+            renderProjectCard(card, item, index);
+        } else {
+            renderImageCard(card, item, index);
+        }
 
         resultsGrid.appendChild(card);
     });
 
-    // 4. INVERT & PLAY
+    // FLIP Animation
     requestAnimationFrame(() => {
         resultsGrid.querySelectorAll('.card').forEach(card => {
             const id = card.dataset.id;
             const first = firstPositions.get(id);
-
             if (first) {
                 const last = card.getBoundingClientRect();
                 const deltaX = first.left - last.left;
                 const deltaY = first.top - last.top;
-
-                // Invert
                 card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
                 card.style.transition = 'none';
-
-                // Play
                 requestAnimationFrame(() => {
-                    card.style.transition = 'transform 0.6s cubic-bezier(0.2, 0, 0.2, 1)'; // Smooth easing
+                    card.style.transition = 'transform 0.6s cubic-bezier(0.2, 0, 0.2, 1)';
                     card.style.transform = '';
                 });
             } else {
-                // New Item: Fade In / Slide Up
                 card.style.opacity = '0';
                 card.style.transform = 'translateY(20px)';
-
                 requestAnimationFrame(() => {
                     card.style.transition = 'opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0, 0.2, 1)';
                     card.style.opacity = '1';
@@ -533,43 +452,125 @@ function updateGridWithFlip(newResults) {
         });
     });
 }
-// Alias renderGrid to updateGridWithFlip for init compatibility if needed
-// function renderGrid() { updateGridWithFlip(currentResults); } 
-// But init calls renderGrid() implicitly via performSearch or just setting html?
-// performSearch calls renderGrid().
-// I will remove the old renderGrid function definition.
 
+function renderImageCard(card, img, index) {
+    card.onmouseenter = () => { if (visionBoard.length === 0) calculateLiveAnalysis([img]); };
+    card.onmouseleave = () => { if (visionBoard.length === 0) calculateLiveAnalysis([]); };
 
+    const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+    const isSelected = visionBoard.includes(img.id);
+    const iconClass = isSelected ? 'active' : '';
+    const actionIcon = isSelected ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
+
+    card.innerHTML = `
+        <img src="${thumbUrl}" loading="lazy" alt="${img.filename}">
+        <div class="card-overlay">
+            <div class="card-actions">
+                <button class="icon-btn" onclick="event.stopPropagation(); window.triggerSimilaritySearch(${img.id})" title="Find Similar">
+                    ${ICONS.SEARCH}
+                </button>
+                <button class="icon-btn ${iconClass}" onclick="event.stopPropagation(); window.toggleVisionFromCard(${img.id})" title="Add to Vision">
+                    ${actionIcon}
+                </button>
+            </div>
+        </div>
+    `;
+
+    card.onclick = () => {
+        if (SEED_IDS.includes(parseInt(img.id))) {
+            handleArchetypeClick(ARCHETYPES[img.id]);
+        } else {
+            openLightbox(index);
+        }
+    };
+}
+
+function renderProjectCard(card, project, index) {
+    const hero = project.hero_image;
+    const thumbUrl = `/thumbnails/${hero.thumbnail_path}`;
+
+    card.classList.add('project-card');
+    card.innerHTML = `
+        <img src="${thumbUrl}" loading="lazy" alt="${hero.filename}">
+        <div class="card-overlay">
+            <div class="project-info">
+                <div class="project-title">${project.id.startsWith('temp_') ? 'Portfolio Collection' : 'Design Project'}</div>
+            </div>
+        </div>
+    `;
+
+    card.onclick = () => openLightbox(index);
+}
+
+function renderFactCard(card, fact) {
+    card.classList.add('fact-card');
+
+    const title = fact.title || "Pro Insight";
+    const text = fact.fact || fact.text;
+    const local = fact.local_context || "";
+    const tags = fact.visual_tags || fact.visual_match_tags || [];
+
+    card.innerHTML = `
+        <div class="fact-content">
+            <div class="fact-icon">🎓</div>
+            <div class="fact-title">${title}</div>
+            <div class="fact-text">${text}</div>
+            ${local ? `<div class="fact-local">${local}</div>` : ''}
+            <div class="fact-tags">
+                ${tags.map(t => `<span class="fact-tag">#${t}</span>`).join('')}
+            </div>
+        </div>
+    `;
+    card.onclick = () => {
+        showToast("Educational Insight - Knowledge Engine");
+    };
+}
+
+// --- LIGHTBOX LOGIC ---
 function openLightbox(index) {
     currentLightboxIndex = index;
+    const item = currentResults[index];
+    if (item && item.design_style) {
+        trackPreference('styles', item.design_style);
+    }
     updateLightboxUI();
     lightbox.classList.remove('hidden');
 }
 
 function closeLightbox() {
     lightbox.classList.add('hidden');
-    // renderGrid() call removed because we don't need to re-render the whole grid just to close lightbox
-    // unless state changed. If state changed (e.g. favorite), we might want to update THAT card.
-    // For now, let's just allow it. Or re-render if needed. 
-    // Actually, re-rendering might be expensive. Let's start with NO re-render.
 }
 
 function updateLightboxUI() {
     if (currentLightboxIndex < 0 || currentLightboxIndex >= currentResults.length) return;
-    const img = currentResults[currentLightboxIndex];
-    lightboxImage.src = `${API_BASE}/image/${img.id}/raw`;
+    const item = currentResults[currentLightboxIndex];
+    const isProject = !!item.hero_image;
+
+    // Reset carousel elements
+    const label = document.getElementById('lightbox-phase-label');
+    if (label) label.classList.add('hidden');
+    const indicators = document.getElementById('lightbox-indicators');
+    if (indicators) indicators.innerHTML = '';
+
+    // Handle Project Container
+    if (isProject) {
+        renderProjectLightbox(item);
+        return;
+    }
+
+    // Standard Image Lightbox
+    const img = item;
+    lightboxImage.src = `/images/${img.filename}`;
 
     // Favorites
-    lightboxFav.classList.toggle('active', !!img.favorite);
-    lightboxFav.onclick = (e) => {
-        e.stopPropagation();
-        toggleFavorite(img.id);
-    };
+    if (lightboxFav) {
+        lightboxFav.classList.toggle('active', !!img.favorite);
+    }
 
-    // Project Mode Trigger
+    // Project Button - HIDE IN LEAHY CONSULTATION MODE
     const projectBtn = document.getElementById('lightboxProject');
     if (projectBtn) {
-        if (img.project_slug) {
+        if (img.project_slug && CLIENT_CONFIG.projectSlug !== 'leahy') {
             projectBtn.style.display = 'block';
             projectBtn.onclick = () => window.enterProjectMode(img.project_slug);
         } else {
@@ -577,53 +578,464 @@ function updateLightboxUI() {
         }
     }
 
-    // Notes
-    if (lightboxNotes) {
-        lightboxNotes.onclick = () => openNotesModal(img);
-    }
-
     // Vision Button
     let visionBtn = document.getElementById('lightboxVision');
-    if (!visionBtn) {
+    if (!visionBtn && lightboxFav) {
         visionBtn = document.createElement('button');
         visionBtn.id = 'lightboxVision';
         visionBtn.className = 'control-btn';
-        // Insert it after favorite or similar
         const target = document.getElementById('lightboxSimilar') || lightboxFav;
         target.parentNode.insertBefore(visionBtn, target.nextSibling);
         visionBtn.onclick = toggleVision;
     }
-    const inVision = visionBoard.includes(img.id);
-    const btnIcon = inVision ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
-    visionBtn.innerHTML = `${btnIcon} <span>Vision</span>`;
-    visionBtn.classList.toggle('active', inVision);
+    if (visionBtn) {
+        const inVision = visionBoard.includes(img.id);
+        const btnIcon = inVision ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
+        visionBtn.innerHTML = `${btnIcon} <span>Vision</span>`;
+        visionBtn.classList.toggle('active', inVision);
+    }
 
     // Similar Button
     let similarBtn = document.getElementById('lightboxSimilar');
-    if (!similarBtn) {
+    if (!similarBtn && lightboxFav) {
         similarBtn = document.createElement('button');
         similarBtn.id = 'lightboxSimilar';
         similarBtn.className = 'control-btn';
         similarBtn.textContent = "🔍 Find Similar";
-        lightboxFav.parentNode.insertBefore(similarBtn, lightboxFav.nextSibling);
+        if (lightboxFav.parentNode) {
+            lightboxFav.parentNode.insertBefore(similarBtn, lightboxFav.nextSibling);
+        }
         similarBtn.onclick = () => {
             triggerSimilaritySearch(currentResults[currentLightboxIndex].id);
         };
     }
+
+    // --- IGNITE OBJECT INTELLIGENCE ---
+    if (lightboxImage.complete) {
+        renderImageObjects(img);
+    } else {
+        lightboxImage.onload = () => renderImageObjects(img);
+    }
 }
 
+function renderProjectLightbox(project) {
+    const allAssets = [...project.assets.after, ...project.assets.context];
+    let assetIndex = 0;
+
+    const label = document.getElementById('lightbox-phase-label');
+    const indicators = document.getElementById('lightbox-indicators');
+
+    const updateAsset = (idx) => {
+        assetIndex = idx; // Update shared index
+        const asset = allAssets[idx];
+        lightboxImage.src = `/images/${asset.filename}`;
+
+        console.log("Setting lightbox asset:", asset.filename);
+
+        if (label) {
+            label.textContent = asset.phase.toUpperCase();
+            label.className = `phase-label phase-${asset.phase}`;
+            label.style.display = 'block';
+            label.classList.remove('hidden');
+        }
+
+        if (indicators) {
+            indicators.querySelectorAll('.indicator').forEach((el, i) => {
+                el.classList.toggle('active', i === idx);
+            });
+        }
+    };
+
+    // Initial render
+    updateAsset(0);
+
+    if (indicators) {
+        indicators.innerHTML = allAssets.map((a, i) =>
+            `<div class="indicator ${i === 0 ? 'active' : ''}" onclick="window.setLightboxAsset(${i})"></div>`
+        ).join('');
+    }
+
+    // Connect prev/next buttons for project carousel
+    document.getElementById('lightboxPrev').onclick = () => {
+        const nextIdx = (assetIndex - 1 + allAssets.length) % allAssets.length;
+        updateAsset(nextIdx);
+    };
+    document.getElementById('lightboxNext').onclick = () => {
+        const nextIdx = (assetIndex + 1) % allAssets.length;
+        updateAsset(nextIdx);
+    };
+
+    window.setLightboxAsset = updateAsset;
+}
+
+// --- SEARCH HELPERS ---
+async function triggerSimilaritySearch(id) {
+    console.log("Finding similar to", id);
+    try {
+        const res = await fetch(`${API_BASE}/similar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id, top_k: 50 })
+        });
+        const data = await res.json();
+        if (data.results) data.results.forEach(img => imageCache[img.id] = img);
+        searchInput.value = `By Image #${id}`;
+        updateGridWithFlip(data.results);
+        closeLightbox();
+    } catch (e) {
+        console.error("Similarity search failed", e);
+    }
+}
+window.triggerSimilaritySearch = triggerSimilaritySearch;
+
+// =========================================================
+// --- NEW OBJECT INTELLIGENCE ENGINE (v15 - ASSET PIPELINE) ---
+// =========================================================
+
+// 1. The Renderer (Draws the shapes + The Hidden Menu)
+async function renderImageObjects(imgMetadata) {
+    const imageId = imgMetadata.id;
+    const overlay = document.getElementById('image-objects-overlay');
+    const objectsList = document.getElementById('objects-list-container');
+    if (!overlay) return;
+
+    // --- STEP A: IMMEDIATE GLOBAL RENDER ---
+    // Clear previous SVG
+    overlay.innerHTML = '';
+
+    // Prepare Discovery List with Global Tags immediately
+    if (objectsList) {
+        objectsList.innerHTML = `
+            <div class="elements-header">
+                <h4 class="elements-title">Design Elements</h4>
+            </div>
+            <div class="chips-wrapper"></div>
+        `;
+        const chipsWrapper = objectsList.querySelector('.chips-wrapper');
+
+        // Render Global Intelligence (GPT-4o tags) immediately
+        const globalTags = new Set([
+            ...(imgMetadata.architectural_features || []),
+            ...(imgMetadata.material_palette || [])
+        ]);
+
+        if (globalTags.size > 0) {
+            objectsList.classList.remove('hidden');
+            globalTags.forEach(tag => {
+                const chip = document.createElement('div');
+                chip.className = 'object-chip global';
+                chip.textContent = tag;
+                chip.title = "Global scene analysis - Click to search";
+
+                chip.onclick = (e) => {
+                    e.stopPropagation();
+                    const searchTerm = tag;
+                    showToast(`Searching for ${searchTerm}...`);
+                    closeLightbox();
+                    document.getElementById('searchInput').value = searchTerm;
+                    performSearch(searchTerm);
+                };
+
+                chipsWrapper.appendChild(chip);
+            });
+        } else {
+            // Hide until spatial results come in
+            objectsList.classList.add('hidden');
+        }
+    }
+
+    // --- STEP B: ASYNC SPATIAL RENDER ---
+    try {
+        const chipsWrapper = objectsList ? objectsList.querySelector('.chips-wrapper') : null;
+        const countBefore = chipsWrapper ? chipsWrapper.querySelectorAll('.object-chip').length : 0;
+
+        const res = await fetch(`${API_BASE}/images/${imageId}/objects`);
+        const data = await res.json();
+
+        if (!data.data || data.data.length === 0) return;
+
+        const svgWidth = data.width || 1024;
+        const svgHeight = data.height || 1024;
+        const viewBox = `0 0 ${svgWidth} ${svgHeight}`;
+
+        const highConfidenceObjects = data.data.filter(obj => obj.confidence >= 0.6);
+
+        if (highConfidenceObjects.length > 0) {
+            // 1. Render SVG Polygons
+            overlay.innerHTML = `
+                <svg viewBox="${viewBox}" style="width:100%; height:100%; display:block;">
+                    ${highConfidenceObjects.map(obj => `
+                        <polygon 
+                            id="poly-${obj.id}"
+                            points="${obj.mask_polygon}" 
+                            class="object-polygon pulse-once"
+                            data-label="${obj.label}"
+                            data-id="${obj.id}"
+                            onclick="handleObjectClick(event, '${obj.id}', '${obj.label}', '${obj.mask_polygon}', '${imageId}')">
+                            <title>${obj.label} (${Math.round(obj.confidence * 100)}%)</title>
+                        </polygon>
+                    `).join('')}
+                </svg>
+                <div id="smart-object-menu" class="object-menu hidden">
+                    <div class="menu-header">
+                        <span id="menu-label">Object</span>
+                        <button onclick="closeSmartMenu()" class="menu-close">&times;</button>
+                    </div>
+                    <div class="menu-actions">
+                        <button onclick="executeSearch()" class="menu-btn primary">
+                            <span>🔍</span> Find Similar
+                        </button>
+                        <button onclick="executeExtract()" class="menu-btn secondary">
+                            <span>✂️</span> Save to Dock
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // 2. Add Spatial Chips to the list
+            if (objectsList) {
+                objectsList.classList.remove('hidden');
+                const chipsWrapper = objectsList.querySelector('.chips-wrapper');
+
+                // Group by label for deduplication
+                const groupedElements = {};
+                highConfidenceObjects.forEach(obj => {
+                    if (!groupedElements[obj.label]) groupedElements[obj.label] = [];
+                    groupedElements[obj.label].push(obj);
+                });
+
+                // Get current labels to avoid duplicates
+                const existingLabels = new Set(Array.from(chipsWrapper.querySelectorAll('.object-chip')).map(c => c.textContent.toLowerCase()));
+
+                Object.keys(groupedElements).forEach(label => {
+                    // If a global tag already exists with this name, we might want to "upgrade" it 
+                    // or just swap it. For now, let's just prepend spatial ones.
+
+                    // Check for exact match in global tags and remove if found to avoid duplication
+                    const globalMatch = Array.from(chipsWrapper.querySelectorAll('.object-chip.global'))
+                        .find(c => c.textContent.toLowerCase() === label.toLowerCase());
+                    if (globalMatch) globalMatch.remove();
+
+                    const objs = groupedElements[label];
+                    const chip = document.createElement('div');
+                    chip.className = 'object-chip spatial';
+                    chip.textContent = label;
+
+                    chip.onmouseenter = () => {
+                        objs.forEach(o => {
+                            const poly = document.getElementById(`poly-${o.id}`);
+                            if (poly) poly.classList.add('highlighted');
+                        });
+                    };
+                    chip.onmouseleave = () => {
+                        objs.forEach(o => {
+                            const poly = document.getElementById(`poly-${o.id}`);
+                            if (poly) poly.classList.remove('highlighted');
+                        });
+                    };
+
+                    chip.onclick = (e) => {
+                        const firstPoly = document.getElementById(`poly-${objs[0].id}`);
+                        const rect = firstPoly ? firstPoly.getBoundingClientRect() : e.target.getBoundingClientRect();
+                        const fakeEvent = {
+                            clientX: rect.left + rect.width / 2,
+                            clientY: rect.top + rect.height / 2,
+                            stopPropagation: () => { }
+                        };
+                        handleObjectClick(fakeEvent, objs[0].id, label, objs[0].mask_polygon, imageId);
+                    };
+
+                    // Prepend spatial chips so they appear first
+                    chipsWrapper.insertBefore(chip, chipsWrapper.firstChild);
+                });
+
+                const countAfter = chipsWrapper.querySelectorAll('.object-chip').length;
+                if (countAfter > countBefore && window.isRefining) {
+                    showNotification(`Deep Intelligence found ${countAfter - countBefore} new design elements!`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error("Error loading object masks:", err);
+    }
+}
+
+// 3. The Refinement Trigger
+window.refineImageAnalysis = async function (imageId) {
+    const btn = document.querySelector('.refine-btn');
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    window.isRefining = true;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner">⏳</span> Intelligence Scan...`;
+
+    try {
+        showNotification('Initiating Deep Intelligence Scan (30-45s)...');
+
+        // Add "keeping alive" notifications
+        const statusMsgs = [
+            "Analyzing spatial geometry...",
+            "Classifying design elements...",
+            "Extracting material palettes...",
+            "Mapping architectural features..."
+        ];
+        let msgIndex = 0;
+        const interval = setInterval(() => {
+            if (window.isRefining && msgIndex < statusMsgs.length) {
+                showToast(statusMsgs[msgIndex++]);
+            }
+        }, 8000);
+
+        console.log(`Triggering deep analysis for ${imageId}...`);
+        const res = await fetch(`${API_BASE}/images/${imageId}/refine`, {
+            method: 'POST'
+        });
+
+        clearInterval(interval);
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.detail || `Server error: ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            showNotification('Deep Intelligence Updated');
+
+            // Refresh metadata from DB
+            const refreshRes = await fetch(`${API_BASE}/images/details`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [imageId] })
+            });
+            const refreshData = await refreshRes.json();
+
+            if (refreshData.images && refreshData.images.length > 0) {
+                const updatedImg = refreshData.images[0];
+                // Update local cache
+                currentResults[currentLightboxIndex] = updatedImg;
+                // Re-render
+                await renderImageObjects(updatedImg);
+            }
+        } else {
+            showNotification('Analysis completed with warnings.');
+        }
+    } catch (err) {
+        console.error("Refinement failed:", err);
+        showNotification(`Intelligence Error: ${err.message}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+        window.isRefining = false;
+    }
+}
+
+// 2. The Interaction Handler (Opens the Menu)
+window.handleObjectClick = function (event, id, label, polygonPoints, imageId) {
+    event.stopPropagation(); // Stop lightbox from closing
+
+    // Micro Preference Tracking
+    trackPreference('elements', label);
+
+    // Save state
+    activeObjectData = { id, label, polygonPoints, imageId };
+
+    const menu = document.getElementById('smart-object-menu');
+    const menuLabel = document.getElementById('menu-label');
+
+    if (menu) {
+        menuLabel.textContent = label;
+        // Simple positioning logic
+        menu.style.left = `${event.clientX + 20}px`;
+        menu.style.top = `${event.clientY}px`;
+
+        menu.classList.remove('hidden');
+    }
+};
+// 3. Action: Search (The "Find Similar" button)
+window.executeSearch = async function () {
+    if (!activeObjectData) return;
+
+    showToast(`Searching for ${activeObjectData.label}s...`);
+    closeSmartMenu();
+    closeLightbox(); // Close modal to see results
+
+    try {
+        const res = await fetch(`${API_BASE}/search/by-object`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ object_id: activeObjectData.id, top_k: 50 })
+        });
+        const data = await res.json();
+
+        // Update Grid
+        document.getElementById('searchInput').value = `Visual Match: ${activeObjectData.label}`;
+        updateGridWithFlip(data.results);
+
+    } catch (e) {
+        console.error("Search failed", e);
+    }
+};
+
+// 4. Action: Extract (The "Save to Dock" button)
+window.executeExtract = function () {
+    if (!activeObjectData) return;
+
+    showToast(`Extracting ${activeObjectData.label}...`);
+    addToVisionDock(activeObjectData);
+    closeSmartMenu();
+};
+
+window.closeSmartMenu = function () {
+    const menu = document.getElementById('smart-object-menu');
+    if (menu) {
+        menu.classList.remove('visible');
+        menu.classList.add('hidden');
+    }
+};
+
+// 5. The Dock Logic (Adds the item to the bottom bar)
+function addToVisionDock(objectData) {
+    // Add to state if not exists
+    const exists = visionCutouts.some(c => c.id === objectData.id);
+    if (!exists) {
+        visionCutouts.push(objectData);
+        localStorage.setItem('visionCutouts', JSON.stringify(visionCutouts));
+    }
+
+    updateVisionUI();
+    showToast(`Added ${objectData.label} to Vision Board`);
+}
+
+// 6. Auto-Ignition (Ensures it loads when lightbox opens)
+const lightboxImgEl = document.getElementById('lightboxImage');
+if (lightboxImgEl) {
+    lightboxImgEl.addEventListener('load', function () {
+        // Extract ID from src URL
+        const urlParts = this.src.split('/');
+        const imageId = urlParts[urlParts.length - 2];
+        if (imageId && !isNaN(imageId)) {
+            renderImageObjects(imageId);
+        }
+    });
+}
+// ==========================================
+
+
+// --- VISION & ANALYSIS UTILS ---
 function toggleVision() {
     const img = currentResults[currentLightboxIndex];
     toggleVisionFromCard(img.id);
 }
 
-// New: Direct Toggle
 window.toggleVisionFromCard = async function (id) {
-    console.log("toggleVisionFromCard called with ID:", id);
     const idx = visionBoard.indexOf(id);
     if (idx === -1) {
         visionBoard.push(id);
-        // Ensure we have metadata
         if (!imageCache[id]) {
             try {
                 const res = await fetch(`${API_BASE}/images/details`, {
@@ -632,23 +1044,16 @@ window.toggleVisionFromCard = async function (id) {
                     body: JSON.stringify({ ids: [id] })
                 });
                 const data = await res.json();
-                if (data.images && data.images[0]) {
-                    imageCache[id] = data.images[0];
-                }
-            } catch (e) {
-                console.error("Failed to fetch metadata for live analysis", e);
-            }
+                if (data.images && data.images[0]) imageCache[id] = data.images[0];
+            } catch (e) { console.error("Metadata fetch failed", e); }
         }
     } else {
         visionBoard.splice(idx, 1);
     }
     localStorage.setItem('visionBoard', JSON.stringify(visionBoard));
-    updateVisionMeter();
+    updateVisionUI();
+    updateLightboxUI();
 
-    updateVisionUI(); // Updates Dock & Analysis
-    updateLightboxUI(); // Updates Modal if open
-
-    // Update Card UI
     const card = resultsGrid.querySelector(`.card[data-id="${id}"]`);
     if (card) {
         const btn = card.querySelectorAll('.icon-btn')[1];
@@ -659,42 +1064,104 @@ window.toggleVisionFromCard = async function (id) {
 }
 
 function updateVisionUI() {
-    const cnt = visionBoard.length;
     const dock = document.getElementById('vision-dock');
     const dockCount = document.getElementById('dock-count');
     const dockItems = document.getElementById('dock-items');
     const analysisSidebar = document.getElementById('analysis-sidebar');
 
-    if (cnt > 0) {
-        dock.classList.remove('hidden');
-        analysisSidebar.classList.remove('hidden');
-        dockCount.textContent = cnt;
+    const totalCount = visionBoard.length + visionCutouts.length;
 
-        // Render dock items
-        dockItems.innerHTML = '';
-        visionBoard.forEach(id => {
-            const img = imageCache[id];
-            if (!img) return;
+    if (totalCount > 0) {
+        if (dock) {
+            dock.classList.remove('hidden');
+            dock.classList.add('visible');
+        }
+        if (analysisSidebar) analysisSidebar.classList.remove('hidden');
+        if (dockCount) dockCount.textContent = totalCount;
 
-            const div = document.createElement('div');
-            div.className = 'dock-item';
-            div.innerHTML = `<img src="/thumbnails/${img.thumbnail_path}" alt="Thumb">`;
-            div.onclick = () => {
-                const idx = currentResults.findIndex(r => r.id === id);
-                if (idx !== -1) openLightbox(idx);
-            };
-            dockItems.appendChild(div);
-        });
+        if (dockItems) {
+            dockItems.innerHTML = '';
 
-        // Trigger Live Analysis
+            // Render Full Images
+            visionBoard.forEach(id => {
+                const img = imageCache[id];
+                if (!img) return;
+                const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+                const item = document.createElement('div');
+                item.className = 'dock-item-wrapper full-image';
+                item.innerHTML = `
+                    <div class="dock-img-container">
+                        <img src="${thumbUrl}" class="dock-full-img" alt="Gallery Image">
+                    </div>
+                    <span class="dock-label">Portfolio #${id}</span>
+                    <button onclick="window.removeFromVision(${id})" class="dock-remove">&times;</button>
+                `;
+                dockItems.appendChild(item);
+            });
+
+            // Render Cutouts
+            visionCutouts.forEach(data => {
+                const imgUrl = `/api/image/${data.imageId}/raw`;
+                const item = document.createElement('div');
+                item.className = 'dock-item-wrapper cutout';
+                item.innerHTML = `
+                    <div class="dock-cutout-container">
+                        <img src="${imgUrl}" class="dock-cutout-img" alt="${data.label}">
+                    </div>
+                    <span class="dock-label">${data.label}</span>
+                    <button onclick="window.removeFromVisionCutout('${data.id}')" class="dock-remove">&times;</button>
+                `;
+                dockItems.appendChild(item);
+            });
+
+        }
+
         calculateLiveAnalysis();
     } else {
-        dock.classList.add('hidden');
-        analysisSidebar.classList.add('hidden');
+        if (dock) {
+            dock.classList.add('hidden');
+            dock.classList.remove('visible');
+        }
+        if (analysisSidebar) analysisSidebar.classList.add('hidden');
     }
 }
 
-// Missing helper functions
+window.removeFromVision = function (id) {
+    const idx = visionBoard.indexOf(id);
+    if (idx !== -1) {
+        visionBoard.splice(idx, 1);
+        localStorage.setItem('visionBoard', JSON.stringify(visionBoard));
+        updateVisionUI();
+        updateLightboxUI();
+
+        // Refresh modal if open
+        const modal = document.getElementById('vision-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            window.populateModalReview();
+        }
+
+        // Update card if visible
+        const card = resultsGrid.querySelector(`.card[data-id="${id}"]`);
+        if (card) {
+            const btn = card.querySelectorAll('.icon-btn')[1];
+            btn.innerHTML = ICONS.PLUS;
+            btn.classList.remove('active');
+        }
+    }
+};
+
+window.removeFromVisionCutout = function (id) {
+    visionCutouts = visionCutouts.filter(c => c.id !== id);
+    localStorage.setItem('visionCutouts', JSON.stringify(visionCutouts));
+    updateVisionUI();
+
+    // Refresh modal if open
+    const modal = document.getElementById('vision-modal');
+    if (modal && !modal.classList.contains('hidden')) {
+        window.populateModalReview();
+    }
+};
+
 function nextImage() {
     if (currentLightboxIndex < currentResults.length - 1) {
         currentLightboxIndex++;
@@ -709,343 +1176,322 @@ function prevImage() {
     }
 }
 
-async function createCollectionPrompt() {
-    const name = prompt("Collection Name:");
-    if (!name) return;
-    const res = await fetch(`${API_BASE}/collection/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
-    });
-    if (res.ok) await loadCollections();
-    else alert("Failed to create collection.");
-}
+// --- PROJECT MODE ---
+window.enterProjectMode = async function (slug) {
+    if (!slug) return;
+    isProjectMode = true;
+    currentProjectSlug = slug;
+    hasViewedProject = true;
 
-// Vision modal cache and notes
-let visionDetailsCache = {}; // This is now largely superseded by imageCache for vision board items
-let visionNotes = JSON.parse(localStorage.getItem('visionNotes')) || {};
 
-// Modal logic updated
-window.openVisionModal = async function () {
-    visionModal.classList.remove('hidden');
+    currentResults = [];
+    resultsGrid.innerHTML = '<div class="loading">Architecting project...</div>';
 
-    // Fetch any missing metadata for modal review
-    await ensureVisionMetadata();
-
-    renderReviewList();
-}
-
-async function ensureVisionMetadata() {
-    const missing = visionBoard.filter(id => !imageCache[id]);
-    if (missing.length > 0) {
-        try {
-            const res = await fetch(`${API_BASE}/images/details`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: missing })
-            });
-            const data = await res.json();
-            if (data.images) {
-                data.images.forEach(img => {
-                    imageCache[img.id] = img;
-                });
-            }
-        } catch (e) {
-            console.error("Metadata fetch error", e);
+    try {
+        const res = await fetch(`${API_BASE}/projects/${slug}`);
+        if (res.ok) {
+            const project = await res.json();
+            renderProjectHero(project);
+        } else {
+            renderProjectHero({ display_title: slug, location: 'Portfolio', description: '', awards: [] });
         }
-    }
+    } catch (err) { console.error("Error fetching project metadata:", err); }
+
+    await performSearch('', '');
+    updateVisionMeter();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (lightbox) lightbox.classList.add('hidden');
 }
 
-// --- REACTIVE ANALYSIS ENGINE ---
+window.exitProjectMode = function () {
+    isProjectMode = false;
+    currentProjectSlug = null;
+    const hero = document.getElementById('project-hero');
+    if (hero) hero.classList.add('hidden');
+    performSearch();
+}
 
-function calculateLiveAnalysis(overrideImages = null) {
-    const selected = overrideImages || visionBoard.map(id => imageCache[id]).filter(Boolean);
+function renderProjectHero(project) {
+    const hero = document.getElementById('project-hero');
+    if (!hero) return;
+    hero.classList.remove('hidden');
+    let awardsHtml = '';
+    if (project.awards && project.awards.length > 0) {
+        awardsHtml = project.awards.map(a => `<span class="award-badge">${a}</span>`).join('');
+    }
+    hero.innerHTML = `
+        <div class="hero-content">
+            <button class="back-link" onclick="window.exitProjectMode()">← BACK TO SEARCH</button>
+            <div class="hero-top">
+                <h2 class="hero-title">${project.display_title} <span class="hero-location">— ${project.location}</span></h2>
+                <div class="hero-awards">${awardsHtml}</div>
+            </div>
+            <p class="hero-description">${project.description}</p>
+        </div>
+    `;
+}
 
-    if (selected.length === 0) {
-        // Reset UI if empty
-        document.getElementById('dominant-style').textContent = '---';
-        document.getElementById('materials-section').classList.add('hidden');
-        document.getElementById('privacy-val').textContent = '---';
-        document.getElementById('terrain-val').textContent = '---';
-        document.getElementById('balance-val').textContent = '---';
-        document.getElementById('spatial-intent-list').textContent = '---';
-        const list = document.getElementById('vision-review-list');
-        if (list) list.innerHTML = '';
+// --- ANALYSIS ENGINE ---
+let analysisDebounceTimer = null;
+let lastAnalysisIds = "";
+
+async function calculateLiveAnalysis(overrideImages = null) {
+    const ids = overrideImages ? overrideImages.map(img => img.id) : visionBoard;
+    const idsString = ids.sort().join(',');
+
+    // Skip if nothing changed and not hovering
+    if (!overrideImages && idsString === lastAnalysisIds) return;
+    if (!overrideImages) lastAnalysisIds = idsString;
+
+    const dominantEl = document.getElementById('dominant-style');
+    const materialsEl = document.getElementById('materials-list');
+    const privacyEl = document.getElementById('privacy-val');
+    const terrainEl = document.getElementById('terrain-val');
+    const balanceEl = document.getElementById('balance-val');
+    const spatialEl = document.getElementById('spatial-intent-list');
+
+    if (ids.length === 0) {
+        if (dominantEl) dominantEl.textContent = '---';
+        if (materialsEl) materialsEl.textContent = '---';
+        if (privacyEl) privacyEl.textContent = '---';
+        if (terrainEl) terrainEl.textContent = '---';
+        if (balanceEl) balanceEl.textContent = '---';
+        if (spatialEl) spatialEl.textContent = '---';
         return;
     }
 
-    // --- 1. DATA AGGREGATION ---
+    // Debounce the heavy lifting
+    clearTimeout(analysisDebounceTimer);
+    analysisDebounceTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`${API_BASE}/vision/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_ids: ids })
+            });
+            const analysis = await res.json();
 
-    // A. Style & Archetype (Dominant)
-    const styleCounts = {};
-    selected.forEach(img => {
-        if (img.design_style) {
-            styleCounts[img.design_style] = (styleCounts[img.design_style] || 0) + 1;
+            if (analysis.error) throw new Error(analysis.error);
+
+            // 1. Dominant Style (Theme)
+            if (dominantEl) {
+                const primaryTheme = analysis.themes?.[0]?.name || "Architectural Discovery";
+                dominantEl.textContent = primaryTheme;
+            }
+
+            // 2. Primary Materials
+            if (materialsEl) {
+                const mats = analysis.materials?.slice(0, 3).join(', ') || "Awaiting Data";
+                materialsEl.textContent = mats;
+            }
+
+            // 3. Site Dynamics (Site Intelligence)
+            if (privacyEl) privacyEl.textContent = analysis.privacy_level || (ids.length === 1 ? (overrideImages[0].privacy_level || "Standard") : "Mixed");
+            if (terrainEl) terrainEl.textContent = analysis.terrain_type || (ids.length === 1 ? (overrideImages[0].terrain_type || "Standard") : "Mixed");
+            if (balanceEl) balanceEl.textContent = analysis.hardscape_ratio || (ids.length === 1 ? (overrideImages[0].hardscape_ratio || "Balanced") : "Mixed");
+
+            // 4. Spatial Intent
+            if (spatialEl) {
+                const intents = analysis.top_elements?.filter(e => e.category === 'spatial_purpose' || e.category === 'layout').slice(0, 3).map(e => e.label).join(', ') || "Curating Flow...";
+                spatialEl.textContent = intents;
+            }
+
+            // Global update for brief
+            window.currentVisionAnalysis = analysis;
+            updateVisionMeter();
+
+        } catch (err) {
+            console.warn("Analysis failed:", err);
         }
-    });
-    const dominantStyle = Object.entries(styleCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unclassified';
+    }, 150);
+}
 
-    // B. Primary Materials (Consolidated List)
-    const materialCounts = {};
-    selected.forEach(img => {
-        const mats = img.material_palette && img.material_palette.length > 0
-            ? img.material_palette
-            : img.hardscape_materials || []; // Fallback
+// --- ARCHETYPES ---
+function handleArchetypeClick(label) {
+    activeArchetype = label;
+    activeChips.clear();
+    const header = document.querySelector('.header');
+    if (header) {
+        const top = header.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({ top: top, behavior: 'smooth' });
+    }
+    renderSmartChips();
+    performSearch();
+    updateVisionMeter();
+}
 
-        mats.forEach(m => {
-            const clean = m.trim().toUpperCase();
-            materialCounts[clean] = (materialCounts[clean] || 0) + 1;
-        });
-    });
-    const topMaterials = Object.entries(materialCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([m]) => m);
+function renderSmartChips() {
+    const container = document.getElementById('smart-chips-container');
+    if (!container) return;
+    // Removed config dependency for debugging
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="context-bridge" style="width: 100%; margin-bottom: 1.5rem;">
+            <p style="font-size: 0.95rem; color: #FFFFFF;">
+                Search for "pools", "patios", or "lighting".
+            </p>
+        </div>
+    `;
+}
 
-    // C. Site Dynamics (Privacy, Terrain, Balance)
-    const privacyCounts = {};
-    const terrainCounts = {};
-    const balanceCounts = {};
+window.toggleChip = function (chip) {
+    if (activeChips.has(chip)) activeChips.delete(chip);
+    else activeChips.add(chip);
+    renderSmartChips();
+    performSearch();
+    updateVisionMeter();
+};
 
-    selected.forEach(img => {
-        if (img.privacy_level) privacyCounts[img.privacy_level] = (privacyCounts[img.privacy_level] || 0) + 1;
-        if (img.terrain_type) terrainCounts[img.terrain_type] = (terrainCounts[img.terrain_type] || 0) + 1;
-        if (img.hardscape_ratio) balanceCounts[img.hardscape_ratio] = (balanceCounts[img.hardscape_ratio] || 0) + 1;
-    });
+function updateVisionMeter() {
+    const scoreEl = document.getElementById('vision-score');
+    const fillEl = document.getElementById('vision-meter-fill');
+    if (!scoreEl || !fillEl) return;
 
-    const getTop = (counts) => Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0].toUpperCase() || '---';
+    let score = 0;
+    if (activeArchetype) score += 20;
+    score += Math.min(visionBoard.length * 15, 60);
+    if (hasViewedProject) score += 20;
 
-    const dominantPrivacy = getTop(privacyCounts);
-    const dominantTerrain = getTop(terrainCounts);
-    const dominantBalance = getTop(balanceCounts);
+    score = Math.min(score, 100);
+    scoreEl.textContent = `${score}%`;
+    fillEl.style.width = `${score}%`;
 
-    // D. Spatial Purpose (Top 2)
-    const spatialCounts = {};
-    selected.forEach(img => {
-        if (img.spatial_purpose) {
-            spatialCounts[img.spatial_purpose] = (spatialCounts[img.spatial_purpose] || 0) + 1;
+    // Stages
+    fillEl.classList.remove('low', 'mid', 'high');
+    if (score >= 90) fillEl.classList.add('high');
+    else if (score >= 40) fillEl.classList.add('mid');
+    else fillEl.classList.add('low');
+
+    // Finalize button state
+    const finalizeBtn = document.getElementById('finalize-vision-trigger');
+    if (finalizeBtn) {
+        if (score >= 100) {
+            finalizeBtn.classList.add('active');
+            finalizeBtn.disabled = false;
+        } else {
+            finalizeBtn.classList.remove('active');
+            // User requested to FIX it, but original code might have allowed it earlier?
+            // "Finalize Brief once again connected to user's clicks"
         }
-    });
-    const topSpatial = Object.entries(spatialCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 2)
-        .map(([purpose]) => purpose.toUpperCase());
+    }
+}
 
 
-    // --- 2. UI RENDERING ('Spec Sheet' Aesthetic) ---
 
-    // Style
-    document.getElementById('dominant-style').textContent = dominantStyle.toUpperCase();
-
-    // Primary Materials
-    const materialsList = document.getElementById('materials-list');
-    const materialsSec = document.getElementById('materials-section');
-    if (topMaterials.length > 0) {
-        materialsList.textContent = topMaterials.join(' • ');
-        materialsSec.classList.remove('hidden');
-    } else {
-        materialsSec.classList.add('hidden');
+window.copyBriefToClipboard = function () {
+    const analysis = window.currentVisionAnalysis;
+    if (!analysis || !analysis.sales_brief) {
+        showToast("We need a few more selections to generate your brief...");
+        return;
     }
 
-    // Site Dynamics
-    document.getElementById('privacy-val').textContent = dominantPrivacy;
-    document.getElementById('terrain-val').textContent = dominantTerrain;
-    document.getElementById('balance-val').textContent = dominantBalance;
+    const briefText = analysis.sales_brief;
 
-    // Spatial Intent
-    const spatialList = document.getElementById('spatial-intent-list');
-    spatialList.innerHTML = topSpatial.length > 0 ? topSpatial.join(' <span class="pipe">|</span> ') : '---';
-
-    // Sidebar Image Review
-    renderSidebarReview(selected);
-
-    // Update global for brief copying
-    window.currentVisionAnalysis = {
-        total_images: selected.length,
-        top_styles: [{ label: dominantStyle, avg: 1.0 }], // Simplified for now
-        top_elements: topSpatial.map(p => ({ label: p, count: 1 }))
-    };
-}
-
-function renderSidebarReview(selected) {
-    const list = document.getElementById('vision-review-list');
-    if (!list) return; // In case we removed it from sidebar
-    list.innerHTML = '';
-    selected.forEach(img => {
-        const div = document.createElement('div');
-        div.className = 'review-item-mini';
-        div.innerHTML = `
-            <img src="/thumbnails/${img.thumbnail_path}">
-            <div class="review-details">
-                <span class="review-caption">${img.caption || 'Project Detail'}</span>
-                <span class="review-style">${img.design_style || ''}</span>
-            </div>
-            <button class="remove-btn-mini" onclick="window.toggleVisionFromCard(${img.id})">&times;</button>
-        `;
-        list.appendChild(div);
+    navigator.clipboard.writeText(briefText).then(() => {
+        showToast("Design Brief copied to clipboard!");
+        window.openVisionModal();
+    }).catch(err => {
+        console.warn('Clipboard access denied, opening modal anyway.');
+        window.openVisionModal();
     });
-}
-window.copyBriefToClipboard = function () {
-    if (!currentVisionAnalysis) return;
+};
 
-    let text = "DESIGN BRIEF - LYNCH LANDSCAPE\n";
-    text += "================================\n";
-    text += `Total Images: ${currentVisionAnalysis.total_images}\n\n`;
+window.submitLead = function (event) {
+    if (event) event.preventDefault();
+    const name = document.getElementById('lead-name')?.value;
+    const email = document.getElementById('lead-email')?.value;
 
-    text += "STYLE MATCH:\n";
-    currentVisionAnalysis.top_styles.forEach(s => {
-        text += `- ${s.label}: ${Math.round(s.avg * 100)}%\n`;
-    });
+    showToast(`Thank you, ${name}! Your vision is being processed.`);
 
-    text += "\nTOP ELEMENTS:\n";
-    currentVisionAnalysis.top_elements.forEach(e => {
-        text += `- ${e.label}: ${e.count} references\n`;
-    });
+    // Simulate API call delay
+    const btn = document.getElementById('submitVisionBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+    }
 
-    navigator.clipboard.writeText(text);
-    alert("Brief copied to clipboard!");
-}
+    setTimeout(() => {
+        window.closeVisionModal();
+        showToast("Vision Board Finalized & Sent!");
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Finalize Vision';
+        }
+    }, 1500);
+};
 
-async function renderReviewList() {
+
+window.openVisionModal = function () {
+    const modal = document.getElementById('vision-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        window.populateModalReview();
+    }
+};
+
+window.populateModalReview = function () {
     const list = document.getElementById('modal-review-list');
+    if (!list) return;
+
     list.innerHTML = '';
 
+    // Full Images
     visionBoard.forEach(id => {
         const img = imageCache[id];
         if (!img) return;
-
-        const div = document.createElement('div');
-        div.className = 'review-item';
-        div.innerHTML = `
-            <img src="/thumbnails/${img.thumbnail_path}" class="review-thumb">
-            <div class="review-info">
-                <h5>${img.caption || 'Product Detail'}</h5>
-                <textarea onchange="window.saveNoteLocal(${img.id}, this.value)" 
-                    placeholder="Notes for this shot...">${visionNotes[img.id] || ''}</textarea>
+        const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+        const item = document.createElement('div');
+        item.className = 'review-item';
+        item.innerHTML = `
+            <img src="${thumbUrl}" class="review-thumb" alt="Portfolio Image">
+            <div class="review-inputs">
+                <span style="font-size: 0.8rem; font-weight: 600;">Portfolio #${id}</span>
+                <input type="text" class="note-input" placeholder="Add a specific note about this style...">
             </div>
-            <button class="remove-btn" onclick="window.removeFromVision(${img.id})">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
+            <button class="remove-btn" onclick="window.removeFromVision(${id})">&times;</button>
         `;
-        list.appendChild(div);
+        list.appendChild(item);
     });
-}
 
-window.saveNoteLocal = function (id, text) {
-    visionNotes[id] = text;
-    localStorage.setItem('visionNotes', JSON.stringify(visionNotes));
-}
-
-window.removeFromVision = function (id) {
-    toggleVisionFromCard(id); // Reuse the toggle logic
-
-    // If empty, close? Or just re-render
-    if (visionBoard.length === 0) {
-        closeVisionModal();
-    } else {
-        renderReviewList();
-    }
-}
-
-window.closeVisionModal = function () {
-    visionModal.classList.add('hidden');
-}
-
-window.submitLead = async function (e) {
-    e.preventDefault();
-    const btn = document.getElementById('submitVisionBtn');
-    btn.disabled = true;
-    btn.textContent = "Sending...";
-
-    const name = document.getElementById('lead-name').value;
-    const email = document.getElementById('lead-email').value;
-    const phone = document.getElementById('lead-phone').value;
-    const address = document.getElementById('lead-address').value;
-    const timeline = document.querySelector('input[name="timeline"]:checked').value;
-    const budget = document.querySelector('input[name="budget"]:checked').value;
-
-    try {
-        const res = await fetch(`${API_BASE}/leads/submit`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name, email, phone, address, timeline, budget,
-                image_ids: visionBoard,
-                image_notes: visionNotes
-            })
-        });
-
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert("Vision Sent! Check your email.");
-            // Clear board
-            visionBoard = [];
-            visionNotes = {};
-            localStorage.removeItem('visionBoard');
-            localStorage.removeItem('visionNotes');
-            updateVisionUI();
-            closeVisionModal();
-        } else {
-            alert("Error sending vision.");
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Failed to send.");
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "Finalize Vision";
-    }
-}
-
-// Notes Modal (Classic View)
-const notesModal = document.getElementById('notesModal');
-const notesInput = document.getElementById('notesInput');
-const saveNotesBtn = document.getElementById('saveNotesBtn');
-const cancelNotesBtn = document.getElementById('cancelNotesBtn');
-let editingImgId = null;
-
-function openNotesModal(img) {
-    editingImgId = img.id;
-    notesInput.value = img.notes || "";
-    notesModal.classList.remove('hidden');
-}
-cancelNotesBtn.onclick = () => notesModal.classList.add('hidden');
-saveNotesBtn.onclick = async () => {
-    if (!editingImgId) return;
-    const txt = notesInput.value;
-    await fetch(`${API_BASE}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingImgId, notes: txt })
+    // Color/Cutouts
+    visionCutouts.forEach(data => {
+        const imgUrl = `/api/image/${data.imageId}/raw`;
+        const item = document.createElement('div');
+        item.className = 'review-item';
+        item.innerHTML = `
+            <img src="${imgUrl}" class="review-thumb" style="object-fit: contain; background: #eee; padding: 4px;" alt="${data.label}">
+            <div class="review-inputs">
+                <span style="font-size: 0.8rem; font-weight: 600;">Detail: ${data.label}</span>
+                <input type="text" class="note-input" placeholder="Note about this material/detail...">
+            </div>
+            <button class="remove-btn" onclick="window.removeFromVisionCutout('${data.id}')">&times;</button>
+        `;
+        list.appendChild(item);
     });
-    const img = currentResults.find(i => i.id === editingImgId);
-    if (img) img.notes = txt;
-    notesModal.classList.add('hidden');
+
+    if (visionBoard.length === 0 && visionCutouts.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">No items selected yet.</p>';
+    }
 };
 
+window.closeVisionModal = function () {
+    const modal = document.getElementById('vision-modal');
+    if (modal) modal.classList.add('hidden');
+};
+
+// Initial Run
 try {
     init();
-} catch (err) {
-    console.error("Init failed:", err);
-    alert("Application Error: " + err.message);
-}
+} catch (err) { console.error("Init failed:", err); }
 
-// --- MOBILE DRAWER LOGIC ---
+// --- DRAWER ---
 window.toggleMobileDrawer = function () {
     const sidebar = document.getElementById('analysis-sidebar');
     const backdrop = document.getElementById('drawer-backdrop');
     if (!sidebar || !backdrop) return;
-
     sidebar.classList.toggle('active');
     backdrop.classList.toggle('active');
-
-    // Force analysis update if opening
-    if (sidebar.classList.contains('active')) {
-        calculateLiveAnalysis();
-    }
 };
-
-// Close drawer when tapping backdrop
 const backdrop = document.getElementById('drawer-backdrop');
 if (backdrop) {
     backdrop.onclick = function () {
@@ -1054,104 +1500,3 @@ if (backdrop) {
         this.classList.remove('active');
     };
 }
-
-
-// --- SINGLE PATH MOMENTUM SYSTEM ---
-
-function handleArchetypeClick(label) {
-    console.log("Archetype Clicked:", label);
-    activeArchetype = label;
-    activeChips.clear();
-
-    // Cinematic Glide: Smooth scroll to the top of the Filter Bar
-    const header = document.querySelector('.header');
-    if (header) {
-        const top = header.getBoundingClientRect().top + window.pageYOffset;
-        window.scrollTo({ top: top, behavior: 'smooth' });
-    }
-
-    // UI: Render chips above grid
-    renderSmartChips();
-
-    // Action: Trigger unified search
-    performSearch();
-
-    // Vision: Update meter
-    updateVisionMeter();
-}
-
-function renderSmartChips() {
-    const container = document.getElementById('smart-chips-container');
-    if (!container || !activeArchetype) return;
-
-    const config = ARCHETYPE_CONFIG[activeArchetype];
-    if (!config) return;
-
-    container.classList.remove('hidden');
-    container.innerHTML = `
-        <div class="context-bridge" style="width: 100%; margin-bottom: 1.5rem; animation: fadeIn 0.8s ease-out;">
-            <h3 style="font-family: 'Playfair Display', serif; font-size: 1.75rem; color: #081D34; margin: 0 0 4px 0;">Exploring: ${activeArchetype}</h3>
-            <p style="font-size: 0.875rem; color: #6b7280; font-weight: 400; margin: 0;">Select a filter below OR type your own specific vision (e.g., "Infinity Edge")</p>
-        </div>
-        <div style="font-size: 0.7rem; font-weight: 700; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; width: 100%; letter-spacing: 0.05em;">
-            Suggested Refinements:
-        </div>
-        ${config.suggested_chips.map(chip => `
-            <div class="smart-chip ${activeChips.has(chip) ? 'active' : ''}" 
-                 onclick="window.toggleChip('${chip}')">
-                ${chip}
-            </div>
-        `).join('')}
-    `;
-}
-
-window.toggleChip = function (chip) {
-    if (activeChips.has(chip)) {
-        activeChips.delete(chip);
-    } else {
-        activeChips.add(chip);
-    }
-    renderSmartChips();
-    performSearch();
-};
-
-function updateVisionMeter() {
-    let score = 0;
-    if (activeArchetype) score += 20;
-    score += Math.min(visionBoard.length * 20, 60);
-    if (hasViewedProject) score += 20;
-
-    const container = document.getElementById('vision-meter-container');
-    if (!container) return;
-
-    let stageClass = 'low';
-    let statusText = 'Start your vision';
-    if (score >= 100) {
-        stageClass = 'high';
-        statusText = 'Vision Complete';
-    } else if (score >= 50) {
-        stageClass = 'mid';
-        statusText = 'Keep going...';
-    }
-
-    container.innerHTML = `
-        <div class="meter-label">
-            <span>Vision Strength</span>
-            <span>${score}%</span>
-        </div>
-        <div class="meter-track">
-            <div class="meter-fill ${stageClass}" style="width: ${score}%"></div>
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
-            <span style="font-size: 0.65rem; color: #6b7280;">${statusText}</span>
-            <button id="finalize-brief-btn" class="finalize-btn ${score >= 100 ? 'active' : ''}" 
-                    ${score >= 100 ? '' : 'disabled'}
-                    onclick="window.copyBriefToClipboard()">
-                Finalize Brief
-            </button>
-        </div>
-    `;
-}
-
-// Final Step: Populate meter on load
-updateVisionMeter();

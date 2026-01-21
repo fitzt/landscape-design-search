@@ -4,6 +4,9 @@ import psycopg2.extras
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Import config for PROJECT_SLUG
+from backend.config import PROJECT_SLUG
+
 # Load env in case it's not loaded (e.g. running script directly)
 load_dotenv()
 
@@ -69,7 +72,12 @@ def init_db():
 def get_image_by_path(file_path):
     conn = get_db_connection()
     c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    c.execute('SELECT * FROM images WHERE file_path = %s', (file_path,))
+    sql = 'SELECT * FROM images WHERE file_path = %s'
+    params = [file_path]
+    if PROJECT_SLUG:
+        sql += " AND project_slug = %s"
+        params.append(PROJECT_SLUG)
+    c.execute(sql, tuple(params))
     img = c.fetchone()
     conn.close()
     return dict(img) if img else None
@@ -97,13 +105,14 @@ def upsert_image(metadata):
     else:
         # Insert
         c.execute('''
-            INSERT INTO images (file_path, filename, folder, mtime, file_hash, exif_date, width, height, thumbnail_path)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO images (file_path, filename, folder, mtime, file_hash, exif_date, width, height, thumbnail_path, project_slug)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         ''', (
             metadata['file_path'], metadata['filename'], metadata['folder'], 
             metadata['mtime'], metadata['file_hash'], metadata.get('exif_date'), 
-            metadata['width'], metadata['height'], metadata['thumbnail_path']
+            metadata['width'], metadata['height'], metadata['thumbnail_path'],
+            PROJECT_SLUG
         ))
         img_id = c.fetchone()[0]
         
@@ -129,7 +138,7 @@ def create_collection(name):
     conn = get_db_connection()
     c = conn.cursor()
     try:
-        c.execute('INSERT INTO collections (name) VALUES (%s) RETURNING id', (name,))
+        c.execute('INSERT INTO collections (name, project_slug) VALUES (%s, %s) RETURNING id', (name, PROJECT_SLUG))
         cid = c.fetchone()[0]
         conn.commit()
         return cid
@@ -161,7 +170,13 @@ def remove_from_collection(collection_id, image_id):
 def get_all_collections():
     conn = get_db_connection()
     c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    c.execute('SELECT * FROM collections ORDER BY name')
+    sql = 'SELECT * FROM collections'
+    params = []
+    if PROJECT_SLUG:
+        sql += ' WHERE project_slug = %s'
+        params.append(PROJECT_SLUG)
+    sql += ' ORDER BY name'
+    c.execute(sql, params)
     rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -169,11 +184,17 @@ def get_all_collections():
 def get_collection_images(collection_id):
     conn = get_db_connection()
     c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    c.execute('''
+    sql = '''
         SELECT i.* FROM images i
         JOIN collection_items ci ON i.id = ci.image_id
+        JOIN collections coll ON ci.collection_id = coll.id
         WHERE ci.collection_id = %s
-    ''', (collection_id,))
+    '''
+    params = [collection_id]
+    if PROJECT_SLUG:
+        sql += " AND coll.project_slug = %s"
+        params.append(PROJECT_SLUG)
+    c.execute(sql, tuple(params))
     rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -183,7 +204,12 @@ def get_all_images_map():
     """Returns a dict of file_path -> {id, mtime, file_hash}"""
     conn = get_db_connection()
     c = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    c.execute('SELECT id, file_path, mtime, file_hash FROM images')
+    sql = 'SELECT id, file_path, mtime, file_hash FROM images'
+    params = []
+    if PROJECT_SLUG:
+        sql += " WHERE project_slug = %s"
+        params.append(PROJECT_SLUG)
+    c.execute(sql, tuple(params))
     rows = c.fetchall()
     conn.close()
     return {r['file_path']: dict(r) for r in rows}

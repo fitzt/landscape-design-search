@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 import psycopg2
+import psycopg2.extras
 from openai import AsyncOpenAI
 from supabase import create_client, Client
 
@@ -25,6 +26,7 @@ client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
+PROJECT_SLUG = os.getenv("PROJECT_SLUG")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -49,10 +51,44 @@ PROMPT = (
     "No people are in these photos."
 )
 
-async def enrich_image(image_id: int, image_url: str):
+async def enrich_image(image_id: int, image_path: str):
     """Enrich a single image using GPT-4o-vision."""
-    logger.info(f"Enriching image {image_id}: {image_url}")
+    logger.info(f"Enriching image {image_id}: {image_path}")
     
+    # --- PREPARE IMAGE CONTENT ---
+    image_content = []
+    
+    if image_path.startswith("http"):
+        image_content = [{"type": "image_url", "image_url": {"url": image_path}}]
+    else:
+        # Local file: Convert to base64
+        import base64
+        import mimetypes
+        
+        try:
+            # Check if path is relative to static or absolute
+            actual_path = image_path
+            if not os.path.exists(actual_path):
+                # Try relative to project root or backend/static
+                static_path = os.path.join("backend/static", image_path)
+                if os.path.exists(static_path):
+                    actual_path = static_path
+            
+            with open(actual_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+                mime_type, _ = mimetypes.guess_type(actual_path)
+                if not mime_type: mime_type = "image/jpeg"
+                
+                image_content = [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
+                    }
+                ]
+        except Exception as e:
+            logger.error(f"Failed to read local image {image_path}: {e}")
+            return
+
     try:
         response = await client.chat.completions.create(
             model="gpt-4o",
@@ -61,10 +97,7 @@ async def enrich_image(image_id: int, image_url: str):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": PROMPT},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_url},
-                        },
+                        *image_content
                     ],
                 }
             ],
@@ -151,10 +184,25 @@ async def enrich_image(image_id: int, image_url: str):
 
 async def main():
     # 1. Fetch images missing site intelligence data
-    res = supabase.table("images").select("id, file_path").is_("privacy_level", "null").order("id").execute()
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
-    images = res.data
-    logger.info(f"Found {len(images)} images to enrich")
+    sql = "SELECT id, file_path FROM images WHERE privacy_level IS NULL"
+    params = []
+    
+    # If we want to prioritize the current project
+    if PROJECT_SLUG:
+        sql += " AND project_slug = %s"
+        params.append(PROJECT_SLUG)
+    
+    sql += " ORDER BY id DESC"
+    
+    cur.execute(sql, tuple(params))
+    images = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    conn.close()
+    
+    logger.info(f"Found {len(images)} images to enrich(Target Project: {PROJECT_SLUG or 'ALL'})")
     
     if not images:
         return
@@ -168,4 +216,7 @@ async def main():
         logger.info(f"Completed batch {i//batch_size + 1}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if not OPENAI_API_KEY or OPENAI_API_KEY == "your-key-here":
+        logger.error("OPENAI_API_KEY not set. Please add it to your .env file.")
+    else:
+        asyncio.run(main())

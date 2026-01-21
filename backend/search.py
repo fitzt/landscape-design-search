@@ -1,7 +1,7 @@
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from .config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K
+from .config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K, PROJECT_SLUG
 from .db import get_db_connection
 import psycopg2.extras
 from PIL import Image
@@ -25,83 +25,131 @@ class SearchEngine:
         print("Model loaded.")
 
     def search(self, query: str, top_k: int = DEFAULT_TOP_K, favorites_only: bool = False, folder: str = None, project_slug: str = None):
+        # Override project_slug with global config if defined
+        if PROJECT_SLUG:
+            project_slug = PROJECT_SLUG
+            
         if not self.index or not self.model:
             print("Search Error: Index or Model missing")
             return []
-
+            
         # CASE 1: No Query (Browse Mode or Project Mode base view)
         if not query:
             conn = get_db_connection()
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                sql = "SELECT * FROM images"
+                params = []
+                where_clauses = []
+                
                 if project_slug:
-                    # STRICT: Exact match on project_slug column
-                    cur.execute("SELECT * FROM images WHERE project_slug = %s ORDER BY file_path ASC", (project_slug,))
-                elif folder:
-                    cur.execute("SELECT * FROM images WHERE folder = %s ORDER BY id", (folder,))
+                    where_clauses.append("project_slug = %s")
+                    params.append(project_slug)
+                
+                if folder:
+                    where_clauses.append("folder = %s")
+                    params.append(folder)
+                
+                if where_clauses:
+                    sql += " WHERE " + " AND ".join(where_clauses)
+                
+                if project_slug:
+                    sql += " ORDER BY file_path ASC"
                 else:
-                    cur.execute("SELECT * FROM images ORDER BY id LIMIT %s", (top_k,))
+                    sql += " ORDER BY id"
+                
+                if not project_slug and not folder:
+                    sql += " LIMIT %s"
+                    params.append(top_k)
+                    
+                cur.execute(sql, tuple(params))
                 rows = cur.fetchall()
             conn.close()
             return [dict(r) for r in rows]
 
-        # CASE 2: Semantic Search
-        # Encode Query
-        query_emb = self.model.encode([query])
-        query_emb = query_emb.astype('float32')
-        faiss.normalize_L2(query_emb)
-
-        # Search in FAISS
-        search_k = top_k * 4
-        distances, ids = self.index.search(query_emb, search_k)
-        
-        ids = ids[0]
-        distances = distances[0]
-        
-        # Fetch Metadata
-        valid_ids = [int(i) for i in ids if i >= 0]
-        if not valid_ids:
-            return []
-
-        # Get all candidates
-        conn = get_db_connection()
-        placeholders = ','.join(['%s'] * len(valid_ids))
-        query_sql = f"SELECT * FROM images WHERE id IN ({placeholders})"
-        
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(query_sql, tuple(valid_ids))
-            rows = cur.fetchall()
-        conn.close()
-
-        row_map = {r['id']: dict(r) for r in rows}
-        
-        results = []
-        for score, img_id in zip(distances, ids):
-            if img_id < 0: continue
-            if img_id not in row_map: continue
+     # If query is present, use semantic search
+        # If query is present, use semantic search
+        if query:
+            print(f"Executing semantic search for: '{query}'")
+            # Encode query
+            text_emb = self.model.encode([query]).astype('float32')
+            faiss.normalize_L2(text_emb)
             
-            img = row_map[img_id]
-            if favorites_only and not img['favorite']: continue
-            if folder and not img['file_path'].startswith(folder): continue
+            # Search index - fetch broadly to allow for post-filtering
+            # Since we filter by project_slug AFTER retrieval, we need a large candidate pool.
+            # Index size is small (~2k), so fetching 2000 is cheap and safe.
+            search_k = max(top_k * 20, 2000)
+            D, I = self.index.search(text_emb, search_k)
             
-            # Project Slug Filtering (Strict Exact Match)
-            if project_slug:
-                if img.get('project_slug') != project_slug:
-                    continue
-
-            # Tighten Vector Search: Zero-Leak Threshold
-            # For normalized vectors, squared L2 distance d^2 = 2(1 - cos_sim)
-            # If we want cos_sim >= 0.8, then d^2 <= 0.4
-            SIMILARITY_THRESHOLD = 0.4
-            if float(score) > SIMILARITY_THRESHOLD:
-                continue
+            # Map back to DB images (Semantic Results)
+            found_ids = [int(id) for id in I[0] if id != -1]
+            scores = {int(id): float(score) for id, score in zip(I[0], D[0]) if id != -1}
+            
+            # Semantic Fetch
+            semantic_results = []
+            if found_ids:
+                placeholders = ','.join(['%s'] * len(found_ids))
+                sql = f"SELECT * FROM images WHERE id IN ({placeholders})"
+                params = list(found_ids)
                 
-            img['score'] = float(score)
-            results.append(img)
+                with get_db_connection() as conn:
+                    with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                        cur.execute(sql, params)
+                        semantic_results = [dict(r) for r in cur.fetchall()]
+
+            # Keyword Fetch (Fallback/Boost)
+            keyword_results = []
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                    # Search filename and rich_tags
+                    # Note: We need to handle the array_to_string carefully or just check if it allows text cast
+                    # Simplest is ILIKE on filename. For tags, we use array query if possible or cast.
+                    kw_sql = """
+                        SELECT * FROM images 
+                        WHERE (filename ILIKE %s OR array_to_string(rich_tags, ' ') ILIKE %s)
+                    """
+                    kw_params = [f"%{query}%", f"%{query}%"]
+                    
+                    if project_slug:
+                        kw_sql += " AND project_slug = %s"
+                        kw_params.append(project_slug)
+                        
+                    kw_sql += " LIMIT 20"
+                    cur.execute(kw_sql, tuple(kw_params))
+                    keyword_results = [dict(r) for r in cur.fetchall()]
+
+            # Merge Results
+            final_map = {}
             
-            if len(results) >= top_k:
-                break
+            # 1. Add Semantic
+            for img in semantic_results:
+                # Filter (redundant if sql filtered, but harmless)
+                if project_slug and img.get('project_slug') != project_slug: continue
                 
-        return results
+                img['similarity'] = scores.get(img['id'], 0)
+                # Apply HIGHER threshold to avoid "patios" showing up for "fire pits"
+                # 0.15 was too loose. 0.26 was catching pools. 0.25 seems safe and inclusive for Leahy pools.
+                if img['similarity'] < 0.25: continue
+                
+                final_map[img['id']] = img
+
+            # 2. Add/Boost Keyword
+            for img in keyword_results:
+                if img['id'] in final_map:
+                    # Boost existing - heavily favor explicit text matches if we have semantic signal
+                    final_map[img['id']]['similarity'] += 0.5 
+                else:
+                    # Add new - IF it matched a keyword, it's likely relevant even if semantic embedding missed it (rare for CLIP but possible)
+                    # But be careful of partial matches. "fire hydrant"?
+                    # We'll trust the 20 limit of keyword sql for now.
+                    img['similarity'] = 0.45 # Make sure it beats the semantic cutoff
+                    final_map[img['id']] = img
+            
+            # Convert to list and sort
+            results = list(final_map.values())
+            # Sort descending
+            results.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            return results[:top_k]
 
 
     def search_by_image(self, image_id: int, top_k: int = DEFAULT_TOP_K):
@@ -116,7 +164,12 @@ class SearchEngine:
         # 1. Get File Path from DB
         conn = get_db_connection()
         with conn.cursor() as cur:
-            cur.execute("SELECT file_path, folder FROM images WHERE id = %s", (image_id,))
+            sql = "SELECT file_path, folder FROM images WHERE id = %s"
+            params = [image_id]
+            if PROJECT_SLUG:
+                sql += " AND project_slug = %s"
+                params.append(PROJECT_SLUG)
+            cur.execute(sql, tuple(params))
             row = cur.fetchone()
         conn.close()
 
@@ -187,6 +240,11 @@ class SearchEngine:
             if img_id not in row_map: continue
             
             img = row_map[img_id]
+
+            # ALWAYS enforce global PROJECT_SLUG if defined
+            if PROJECT_SLUG and img.get('project_slug') != PROJECT_SLUG:
+                continue
+
             base_score = float(score)
             
             # --- SOFT WEIGHTS LOGIC ---
@@ -230,9 +288,13 @@ class SearchEngine:
             limit_ids = image_ids[:5] 
             
             conn = get_db_connection()
-            placeholders = ','.join(['%s'] * len(limit_ids))
+            sql = f"SELECT file_path FROM images WHERE id IN ({placeholders})"
+            params = list(limit_ids)
+            if PROJECT_SLUG:
+                sql += " AND project_slug = %s"
+                params.append(PROJECT_SLUG)
             with conn.cursor() as cur:
-                cur.execute(f"SELECT file_path FROM images WHERE id IN ({placeholders})", tuple(limit_ids))
+                cur.execute(sql, tuple(params))
                 rows = cur.fetchall()
             conn.close()
             
@@ -264,3 +326,94 @@ class SearchEngine:
             print(f"Analysis Error: {e}")
             return {"error": str(e)}
 
+
+    def search_by_object(self, object_id: str, top_k: int = DEFAULT_TOP_K):
+        """
+        Finds similar images using a specific object ID as the anchor.
+        Queries the image_objects table using pgvector cosine similarity.
+        """
+        conn = get_db_connection()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # 1. Get the anchor embedding
+                sql = """
+                    SELECT io.object_embedding 
+                    FROM image_objects io
+                    JOIN images i ON io.image_id = i.id
+                    WHERE io.id = %s
+                """
+                params = [object_id]
+                if PROJECT_SLUG:
+                    sql += " AND i.project_slug = %s"
+                    params.append(PROJECT_SLUG)
+                
+                cur.execute(sql, tuple(params))
+                row = cur.fetchone()
+                if not row:
+                    print(f"Object ID {object_id} not found or access denied.")
+                    return []
+                anchor_emb = row['object_embedding']
+
+                # 2. Vector search for similar objects
+                sql = """
+                    SELECT io.image_id, io.label, io.confidence, (io.object_embedding <=> %s) as distance
+                    FROM image_objects io
+                    JOIN images i ON io.image_id = i.id
+                    WHERE io.id != %s
+                """
+                params = [anchor_emb, object_id]
+                if PROJECT_SLUG:
+                    sql += " AND i.project_slug = %s"
+                    params.append(PROJECT_SLUG)
+                
+                sql += """
+                    ORDER BY io.object_embedding <=> %s
+                    LIMIT %s
+                """
+                params.extend([anchor_emb, top_k * 2])
+                
+                cur.execute(sql, tuple(params))
+                object_results = cur.fetchall()
+                
+                if not object_results:
+                    return []
+
+                # 3. Extract unique image IDs
+                # We want to return the parent images of these similar objects
+                image_ids = []
+                seen_images = set()
+                for obj in object_results:
+                    iid = obj['image_id']
+                    if iid not in seen_images:
+                        image_ids.append(iid)
+                        seen_images.add(iid)
+                    if len(image_ids) >= top_k:
+                        break
+
+                if not image_ids:
+                    return []
+
+                # 4. Fetch full image metadata
+                placeholders = ','.join(['%s'] * len(image_ids))
+                sql = f"SELECT * FROM images WHERE id IN ({placeholders})"
+                params = list(image_ids)
+                if PROJECT_SLUG:
+                    sql += " AND project_slug = %s"
+                    params.append(PROJECT_SLUG)
+                cur.execute(sql, tuple(params))
+                image_rows = cur.fetchall()
+                
+                # Sort images based on the order of their best matching object
+                image_map = {r['id']: dict(r) for r in image_rows}
+                results = []
+                for iid in image_ids:
+                    if iid in image_map:
+                        results.append(image_map[iid])
+                
+                return results
+
+        except Exception as e:
+            print(f"Object similarity search failed: {e}")
+            return []
+        finally:
+            conn.close()

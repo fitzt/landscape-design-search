@@ -39,7 +39,7 @@ uvicorn backend.app:app --reload
 ```
 
 ## Usage
-1. Open http://localhost:8000 in your browser.
+1. Openhttp://localhost:8000  in your browser.
 2. Type a query like "pool landscaping lighting".
 3. Use filters to narrow down by folder or favorites.
 4. Click an image to view details, add notes, or add to a collection.

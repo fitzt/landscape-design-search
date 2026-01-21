@@ -37,7 +37,8 @@ class VisionAnalyzer:
         
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute(f"""
-                SELECT id, tags, caption, style_scores, file_path
+                SELECT id, tags, caption, style_scores, file_path,
+                       privacy_level, terrain_type, hardscape_ratio
                 FROM images 
                 WHERE id IN ({placeholders})
             """, tuple(image_ids))
@@ -47,6 +48,14 @@ class VisionAnalyzer:
         if not images:
             return {"error": "No images found"}
         
+        # Aggregate Site Intelligence (Most frequent non-null value)
+        privacies = [img['privacy_level'] for img in images if img.get('privacy_level')]
+        terrains = [img['terrain_type'] for img in images if img.get('terrain_type')]
+        ratios = [img['hardscape_ratio'] for img in images if img.get('hardscape_ratio')]
+        
+        def most_common(lst):
+            return Counter(lst).most_common(1)[0][0] if lst else "Mixed"
+
         # Extract all tags and scores
         all_tags = []
         tag_scores = {}
@@ -107,6 +116,9 @@ class VisionAnalyzer:
             "maintenance_vibe": maintenance_vibe[0] if maintenance_vibe else None,
             "unconscious_patterns": unconscious_patterns,
             "sales_brief": sales_brief,
+            "privacy_level": most_common(privacies),
+            "terrain_type": most_common(terrains),
+            "hardscape_ratio": most_common(ratios),
             "tag_diversity": len(set(all_tags)),
             "avg_tags_per_image": round(len(all_tags) / total_images, 1)
         }

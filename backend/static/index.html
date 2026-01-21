@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Search</title>
-    <meta name="description" content="Semantic search for your landscape photography portfolio">
-    <link rel="stylesheet" href="styles.css?v=14.0">
+    <title id="page-title">Brand Name | Portfolio Search</title>
+    <meta id="meta-description" name="description" content="Semantic search for your portfolio">
+    <link rel="stylesheet" href="styles.css?v=15.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -28,24 +28,21 @@
     <div class="app-container">
         <header class="header">
             <div class="header-brand">
-                <h1>Lynch Landscape & Tree Service</h1>
-                <p
-                    style="font-size: 0.75rem; color: #081D34; letter-spacing: 0.1em; text-transform:none; margin-top: 4px;">
-                    Intelligent Portfolio Search <span style="opacity: 0.5; margin-left: 8px;">v14.0</span></p>
-                <img class="brand-logo" src="logo.jpg" alt="Lynch Landscape & Tree Service logo" width="140"
-                    height="140" />
+                <h1 id="brand-name">Brand Name</h1>
+                <p id="brand-tagline"
+                    style="font-size: 0.75rem; color: rgba(255,255,255,0.7); letter-spacing: 0.1em; text-transform:none; margin-top: 4px;">
+                    Tagline <span id="brand-version" style="opacity: 0.5; margin-left: 8px;">Version</span></p>
+                <img id="brand-logo" class="brand-logo" src="" alt="Brand Logo" width="140" height="140" />
             </div>
+        </header>
+
+        <div class="search-section">
             <div class="search-bar">
                 <input type="search" id="searchInput"
                     placeholder="Search for a feature or select an archetype to start..." autofocus>
                 <button id="searchBtn">Search</button>
             </div>
-            <div class="filters">
-                <select id="folderFilter" class="filter-select">
-                    <option value="">All Folders</option>
-                </select>
-            </div>
-        </header>
+        </div>
 
         <!-- Main Layout with Sidebar -->
         <div class="main-layout">
@@ -56,6 +53,9 @@
 
                 <!-- Smart Refinement Chips -->
                 <div id="smart-chips-container" class="chips-row hidden"></div>
+
+                <!-- Trust Header (Consultation Mode) -->
+                <div id="trust-header-container" class="trust-header hidden"></div>
 
                 <!-- Main Grid -->
                 <main id="resultsGrid" class="grid-container">
@@ -89,7 +89,7 @@
                                 <span class="step-num">03</span>
                                 <div class="step-text">
                                     <h6>Unlock Insights</h6>
-                                    <p>Finalize your board to see a deep architectural brief of your personal style.</p>
+                                    <p>Finalize your board to see a architectural brief of your personal style.</p>
                                 </div>
                             </div>
                         </div>
@@ -103,11 +103,20 @@
             <aside id="analysis-sidebar" class="analysis-sidebar sidebar hidden">
                 <div id="vision-analysis-panel" class="vision-analysis">
                     <div class="analysis-header">
-                        <h4>Design Intelligence <span
+                        <h4>Design Intelligence <span id="sidebar-version"
                                 style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-left: 0.5rem;">PRO
-                                v14.0</span></h4>
-                        <div id="vision-meter-container" class="vision-meter-wrapper">
-                            <!-- Injected by JS -->
+                                Version</span></h4>
+                    </div>
+
+                    <!-- Vision Strength Meter -->
+                    <div id="vision-meter-container" class="spec-section vision-meter-wrapper"
+                        style="margin-bottom: 2rem;">
+                        <div class="meter-label">
+                            <span>Vision Strength</span>
+                            <span id="vision-score">0%</span>
+                        </div>
+                        <div class="meter-track">
+                            <div id="vision-meter-fill" class="meter-fill low" style="width: 0%"></div>
                         </div>
                     </div>
 
@@ -159,7 +168,7 @@
 
                         <div class="spec-footer">
                             <button id="finalize-vision-trigger" class="spec-finalize-btn"
-                                onclick="window.openVisionModal()">
+                                onclick="window.copyBriefToClipboard()">
                                 Finalize Architectural Brief
                             </button>
                         </div>
@@ -171,8 +180,7 @@
         <!-- Vision Dock (Persistent Bottom Bar) -->
         <div id="vision-dock" class="vision-dock hidden">
             <div class="dock-header">
-                <span class="dock-title">Your Vision Board (<span id="dock-count">0</span>)</span>
-                <span class="dock-title">Your Vision Board (<span id="dock-count">0</span>)</span>
+                <span class="dock-title">Favorited Images (<span id="dock-count">0</span>)</span>
             </div>
             <div class="dock-content">
                 <div id="dock-items" class="dock-items">
@@ -190,8 +198,8 @@
                     <!-- Left: Form -->
                     <div class="modal-left">
                         <div class="brand-header-mobile">
-                            <h3 class="brand-text">Lynch Landscape & Tree Service</h3>
-                            <p class="brand-sub">Sudbury, MA</p>
+                            <h3 id="modal-brand-name" class="brand-text">Brand Name</h3>
+                            <p id="modal-brand-location" class="brand-sub">Location</p>
                         </div>
                         <h2>Save Your Project Vision</h2>
                         <p class="subtitle">Tell us about your project.</p>
@@ -264,8 +272,8 @@
                     <!-- Right: Branding & Review -->
                     <div class="modal-right">
                         <div class="brand-header">
-                            <h3 class="brand-text">LYNCH LANDSCAPE</h3>
-                            <p class="brand-sub">DESIGN & TREE SERVICE</p>
+                            <h3 id="modal-sidebar-brand-name" class="brand-text">BRAND NAME</h3>
+                            <p id="modal-sidebar-brand-sub" class="brand-sub">TAGLINE</p>
                         </div>
 
                         <div class="vision-summary">
@@ -283,7 +291,17 @@
         <div id="lightbox" class="lightbox hidden">
             <button id="lightboxClose" class="close-btn">&times;</button>
             <div class="lightbox-content">
-                <img id="lightboxImage" src="" alt="">
+                <div class="lightbox-image-wrapper">
+                    <img id="lightboxImage" src="" alt="">
+                    <div id="image-objects-overlay" class="objects-overlay"></div> <!-- SVG Layer -->
+                    <span id="object-tooltip" class="object-tooltip hidden"></span>
+                </div>
+
+                <div id="lightbox-phase-label" class="phase-label hidden">AFTER</div>
+                <div id="lightbox-indicators" class="lightbox-indicators"></div>
+
+                <!-- NEW: Element Discovery List -->
+                <div id="objects-list-container" class="objects-list hidden"></div>
 
                 <button id="lightboxPrev" class="nav-btn prev">&lsaquo;</button>
                 <button id="lightboxNext" class="nav-btn next">&rsaquo;</button>
@@ -317,9 +335,16 @@
 
     <div id="version-badge"
         style="position:fixed; bottom:10px; right:10px; background:rgba(0,0,0,0.8); color: #00ff9d; padding: 5px 10px; border-radius: 4px; z-index: 9999; font-family: monospace; font-weight: bold;">
-        v14.0 - SINGLE PATH ENGINE</div>
-    <script type="module" src="app.js?v=14.0"></script>
-    <link rel="stylesheet" href="styles.css?v=14.0">
+        Version 2.0| OBJECT INTELLIGENCE</div>
+    <script type="module" src="app.js?v=15.0"></script>
+    <link rel="stylesheet" href="styles.css?v=15.0">
+    <div id="toast" class="toast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+                d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+        </svg>
+        <span id="toast-message">Searching...</span>
+    </div>
 </body>
 
 </html>

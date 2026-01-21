@@ -1,5 +1,9 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables early
+load_dotenv()
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,6 +29,7 @@ CLIP_MODEL_NAME = "clip-ViT-B-32"
 
 # Search
 DEFAULT_TOP_K = 50
+PROJECT_SLUG = os.getenv("PROJECT_SLUG")
 
 # Ensure directories exist
 THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)

@@ -12,14 +12,14 @@ from pathlib import Path
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.search import SearchEngine
+from backend.search_strategies.coordinator import StrategyCoordinator
 from backend.db import (
     set_favorite, set_notes, create_collection, 
     add_to_collection, remove_from_collection, 
     get_all_collections, get_collection_images,
     get_db_connection, get_image_by_path
 )
-from backend.config import THUMBNAILS_DIR, BASE_DIR
+from backend.config import DB_PATH, THUMBNAILS_DIR, DEFAULT_TOP_K, PROJECT_SLUG, PHOTO_FOLDER, BASE_DIR
 from backend.pdf_generator import PDFGenerator
 from backend.email_service import EmailService
 import json
@@ -36,13 +36,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Search Engine (Global state)
-search_engine = None
+# Initialize Strategy Coordinator (Global state)
+strategy_coordinator = None
 
 @app.on_event("startup")
 def startup_event():
-    global search_engine
-    search_engine = SearchEngine()
+    global strategy_coordinator
+    strategy_coordinator = StrategyCoordinator()
 
 # Models
 class SearchRequest(BaseModel):
@@ -54,6 +54,10 @@ class SearchRequest(BaseModel):
 
 class SimilarSearchRequest(BaseModel):
     id: int
+    top_k: int = 50
+
+class ObjectSearchRequest(BaseModel):
+    object_id: str
     top_k: int = 50
 
 class FavoriteRequest(BaseModel):
@@ -78,11 +82,21 @@ def health():
 
 @app.post("/api/search")
 async def search_endpoint(req: SearchRequest):
-    results = search_engine.search(req.query, req.top_k, req.favorites_only, req.folder, req.slug)
-    return {"results": results}
+    search_data = strategy_coordinator.search(req.query, req.top_k, req.favorites_only, req.folder, req.slug)
+    
+    if isinstance(search_data, dict):
+        return {
+            "results": search_data.get("results", []),
+            "trust_header": search_data.get("trust_header")
+        }
+    
+    return {"results": search_data}
 
 @app.get("/api/projects/{slug}")
 async def get_project_metadata(slug: str):
+    if PROJECT_SLUG and slug != PROJECT_SLUG:
+        raise HTTPException(status_code=403, detail="Access denied to this project")
+        
     conn = get_db_connection()
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         cur.execute("SELECT * FROM projects WHERE filename_slug = %s", (slug,))
@@ -94,10 +108,122 @@ async def get_project_metadata(slug: str):
     
     return dict(row)
 
-@app.post("/api/search/similar")
-async def search_similar_endpoint(req: SimilarSearchRequest):
-    results = search_engine.search_by_image(req.id, req.top_k)
+@app.post("/api/similar")
+async def similar_endpoint(req: SimilarSearchRequest):
+    results = strategy_coordinator.search_by_image(req.id, req.top_k)
     return {"results": results}
+
+@app.post("/api/similar-object")
+async def object_search_endpoint(req: ObjectSearchRequest):
+    results = strategy_coordinator.search_by_object(req.object_id, req.top_k)
+    return {"results": results}
+
+@app.get("/api/images/{image_id}/objects")
+async def get_image_objects(image_id: int):
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        # 1. Fetch image dimensions for scaling (with safety check)
+        sql = "SELECT width, height FROM images WHERE id = %s"
+        params = [image_id]
+        if PROJECT_SLUG:
+            sql += " AND project_slug = %s"
+            params.append(PROJECT_SLUG)
+        cur.execute(sql, tuple(params))
+        img_row = cur.fetchone()
+        
+        if not img_row:
+            return {"width": 1024, "height": 1024, "data": []}
+        
+        # 2. Fetch objects with high confidence
+        cur.execute("""
+            SELECT io.id, io.label, io.confidence, io.mask_polygon
+            FROM image_objects io
+            JOIN images i ON io.image_id = i.id
+            WHERE io.image_id = %s AND io.confidence > 0.6
+        """ + (f" AND i.project_slug = '{PROJECT_SLUG}'" if PROJECT_SLUG else "") + """
+            ORDER BY io.confidence DESC
+        """, (image_id,))
+        rows = cur.fetchall()
+        
+        objects = []
+        for row in rows:
+            objects.append({
+                "id": str(row['id']),
+                "label": row['label'],
+                "confidence": row['confidence'],
+                "mask_polygon": row['mask_polygon']
+            })
+            
+        return {
+            "width": img_row['width'] if img_row else 1024,
+            "height": img_row['height'] if img_row else 1024,
+            "data": objects
+        }
+    except Exception as e:
+        print(f"Error fetching objects: {e}")
+        return {"width": 1024, "height": 1024, "data": []}
+    finally:
+        conn.close()
+
+@app.post("/api/images/{image_id}/refine")
+async def refine_image_analysis(image_id: int):
+    """
+    Triggers a deep re-analysis of an image:
+    1. Global GPT-4o Vision scan for rich tags and materials.
+    2. Local SAM/CLIP scan for specific object polygons with expanded vocabulary.
+    """
+    import subprocess
+    import os
+    
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT file_path FROM images WHERE id = %s", (image_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        file_path = row['file_path']
+        
+        # 1. Run Global Enrichment (GPT-4o)
+        # We'll use a simplified version of enrich_images.py logic or call it as a script
+        # For speed and isolation, we'll try running the script via subprocess as it's already set up
+        # However, enrich_images.py processes ALL images. We need a targeted version.
+        # Let's import the logic instead if possible, or just use a small subprocess command.
+        
+        # NOTE: For this implementation, we will assume enrich_images.py and process_objects_m3.py 
+        # can be modified to take a specific image_id, OR we just trigger them and they find the work.
+        # But to be precise for the user, let's run a targeted script.
+        
+        print(f"Triggering refinement for image {image_id}")
+        
+        # Run Object Process (Spatial)
+        # We modify process_objects_m3.py slightly to handle a single ID if passed?
+        # For now, we'll just run them and they will pick up images that need work.
+        # More robust: run a small python snippet that processes THIS specific image.
+        
+        refine_cmd = f"PYTHONPATH=. python3 -c \"from process_objects_m3 import process_image; process_image({image_id}, '{file_path}')\""
+        subprocess.run(refine_cmd, shell=True, check=True)
+        
+        # Run Global Enrichment (Global)
+        # Assuming enrich_images.py has a targeted function
+        enrich_cmd = f"PYTHONPATH=. python3 -c \"import asyncio; from enrich_images import enrich_image; asyncio.run(enrich_image({image_id}, '{file_path}'))\""
+        subprocess.run(enrich_cmd, shell=True, check=True)
+        
+        return {"status": "success", "message": "Refinement complete"}
+    except Exception as e:
+        print(f"Refinement failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+# Keep legacy endpoint for now to avoid breaking existing frontend if it hasn't refreshed
+@app.get("/api/image-objects/{image_id}")
+async def get_image_objects_legacy(image_id: int):
+    res = await get_image_objects(image_id)
+    return {"objects": res["data"]}
 
 @app.post("/api/favorite")
 def toggle_favorite(req: FavoriteRequest):
@@ -109,12 +235,21 @@ def update_notes(req: NoteRequest):
     set_notes(req.id, req.notes)
     return {"status": "updated", "id": req.id, "notes": req.notes}
 
+@app.post("/api/analyze-board")
+async def analyze_board(req: List[int]):
+    report = strategy_coordinator.analyze_board(req)
+    return report
+
 @app.get("/api/folders")
 def get_folders():
     # Helper to get distinct folders
     conn = get_db_connection()
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT folder FROM images ORDER BY folder")
+        sql = "SELECT DISTINCT folder FROM images"
+        if PROJECT_SLUG:
+            sql += f" WHERE project_slug = '{PROJECT_SLUG}'"
+        sql += " ORDER BY folder"
+        cur.execute(sql)
         rows = cur.fetchall()
     conn.close()
     return {"folders": [r[0] for r in rows]}
@@ -126,6 +261,16 @@ def list_collections():
 @app.get("/api/collection/{id}")
 def get_collection(id: int):
     images = get_collection_images(id)
+    if not images and PROJECT_SLUG:
+        # Check if collection exists but belongs to another project
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT project_slug FROM collections WHERE id = %s", (id,))
+            row = cur.fetchone()
+        conn.close()
+        if row and row[0] != PROJECT_SLUG:
+             raise HTTPException(status_code=403, detail="Access denied to this collection")
+             
     return {"id": id, "images": images}
 
 @app.post("/api/collection/create")
@@ -149,7 +294,12 @@ def remove_from_collection_endpoint(req: CollectionItemRequest):
 def get_image_raw(id: int):
     conn = get_db_connection()
     with conn.cursor() as cur:
-        cur.execute("SELECT file_path FROM images WHERE id = %s", (id,))
+        sql = "SELECT file_path FROM images WHERE id = %s"
+        params = [id]
+        if PROJECT_SLUG:
+            sql += " AND project_slug = %s"
+            params.append(PROJECT_SLUG)
+        cur.execute(sql, tuple(params))
         img = cur.fetchone()
     conn.close()
     
@@ -215,11 +365,16 @@ def get_images_details(req: ImageDetailsRequest):
         placeholders = ','.join(['%s'] * len(req.ids))
         query = f"""
             SELECT id, file_path, thumbnail_path, favorite, tags, style_scores, caption,
-                   design_style, maintenance_level, seasonal_interest, spatial_purpose, color_palette, project_slug
+                   design_style, maintenance_level, seasonal_interest, spatial_purpose, color_palette, project_slug,
+                   privacy_level, terrain_type, hardscape_ratio, material_palette, architectural_features
             FROM images 
             WHERE id IN ({placeholders})
         """
-        cur.execute(query, tuple(req.ids))
+        if PROJECT_SLUG:
+            query += " AND project_slug = %s"
+            cur.execute(query, tuple(req.ids + [PROJECT_SLUG]))
+        else:
+            cur.execute(query, tuple(req.ids))
         rows = cur.fetchall()
         
     conn.close()
@@ -267,8 +422,8 @@ def submit_lead(req: LeadRequest):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO leads (name, email, phone, timeline, budget, address, vision_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO leads (name, email, phone, timeline, budget, address, vision_json, project_slug)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 req.name, req.email, req.phone, req.timeline, req.budget, req.address, 
@@ -277,7 +432,8 @@ def submit_lead(req: LeadRequest):
                     "notes": req.image_notes,
                     "manual_style": req.detected_style,
                     "report": vision_report
-                })
+                }),
+                PROJECT_SLUG
             ))
             lead_id = cur.fetchone()[0]
             conn.commit()
@@ -309,6 +465,7 @@ def submit_lead(req: LeadRequest):
 # Mount thumbnails explicitly to confirm access
 
 app.mount("/thumbnails", StaticFiles(directory=str(THUMBNAILS_DIR)), name="thumbnails")
+app.mount("/images", StaticFiles(directory=str(PHOTO_FOLDER)), name="images")
 
 # Mount Frontend - MUST be last or it catches API routes if we mounted root
 # Actually, better to mount static URL for assets, and "/" for index.html manually? 
@@ -317,4 +474,5 @@ STATIC_DIR = BASE_DIR / "backend/static"
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 if __name__ == "__main__":
-    uvicorn.run("backend.app:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("backend.app:app", host="0.0.0.0", port=port, reload=True)
