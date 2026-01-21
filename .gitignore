@@ -9,10 +9,12 @@ landscape.db
 
 # Design data (huge binary files)
 images.csv
+*.pth
 
 # Locally stored images/PDFs
 optimized_images/
 generated_reports/
+trash_images/
 
 # OS
 .DS_Store
