@@ -679,7 +679,7 @@ async function triggerSimilaritySearch(id) {
         });
         const data = await res.json();
         if (data.results) data.results.forEach(img => imageCache[img.id] = img);
-        searchInput.value = `By Image #${id}`;
+        // searchInput.value = `By Image #${id}`; // Removed for "magic" UI
         updateGridWithFlip(data.results);
         closeLightbox();
     } catch (e) {
@@ -1327,9 +1327,7 @@ function renderSmartChips() {
     container.classList.remove('hidden');
     container.innerHTML = `
         <div class="context-bridge" style="width: 100%; margin-bottom: 1.5rem;">
-            <p style="font-size: 0.95rem; color: #FFFFFF;">
-                Search for "pools", "patios", or "lighting".
-            </p>
+            <!-- Removed 'Search for' suggestions per user request -->
         </div>
     `;
 }
