@@ -123,9 +123,6 @@ class StandardSearch(SearchInterface):
         results.sort(key=lambda x: x['similarity'], reverse=True)
         return results[:top_k]
 
-from ..config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K, PROJECT_SLUG, PHOTO_FOLDER
-
-# ... (imports remain)
 
     def search_by_image(self, image_id: int, top_k: int = DEFAULT_TOP_K):
         if not self.index or not self.model:
