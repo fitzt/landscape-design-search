@@ -1,7 +1,7 @@
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from ..config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K, PROJECT_SLUG
+from ..config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K, PROJECT_SLUG, PHOTO_FOLDER
 from ..db import get_db_connection
 import psycopg2.extras
 from PIL import Image
@@ -123,13 +123,17 @@ class StandardSearch(SearchInterface):
         results.sort(key=lambda x: x['similarity'], reverse=True)
         return results[:top_k]
 
+from ..config import INDEX_PATH, CLIP_MODEL_NAME, DEFAULT_TOP_K, PROJECT_SLUG, PHOTO_FOLDER
+
+# ... (imports remain)
+
     def search_by_image(self, image_id: int, top_k: int = DEFAULT_TOP_K):
         if not self.index or not self.model:
             return []
 
         conn = get_db_connection()
         with conn.cursor() as cur:
-            sql = "SELECT file_path, folder FROM images WHERE id = %s"
+            sql = "SELECT file_path, folder, filename, project_slug FROM images WHERE id = %s"
             params = [image_id]
             if PROJECT_SLUG:
                 sql += " AND project_slug = %s"
@@ -140,18 +144,29 @@ class StandardSearch(SearchInterface):
 
         if not row: return []
         
-        file_path, anchor_folder = row
+        file_path, anchor_folder, filename, img_slug = row
         
-        if file_path.startswith("http"):
+        # Resolve Path (Handle Render/Cloud discrepancies)
+        valid_path = file_path
+        if not file_path.startswith("http") and not os.path.exists(file_path):
+             # Try determining from PHOTO_FOLDER + filename
+             candidate = os.path.join(PHOTO_FOLDER, filename)
+             if os.path.exists(candidate):
+                 valid_path = candidate
+             else:
+                 # Last resort: try looking relative to app root if strictly configured
+                 pass
+
+        if valid_path.startswith("http"):
             import requests
             from io import BytesIO
             try:
-                response = requests.get(file_path)
+                response = requests.get(valid_path)
                 image = Image.open(BytesIO(response.content))
             except: return []
         else:
-            if not os.path.exists(file_path): return []
-            try: image = Image.open(file_path)
+            if not os.path.exists(valid_path): return []
+            try: image = Image.open(valid_path)
             except: return []
 
         img_emb = self.model.encode([image])
@@ -165,10 +180,17 @@ class StandardSearch(SearchInterface):
         if not valid_ids: return []
 
         conn = get_db_connection()
+        # Optimize: Filter inside SQL
         placeholders = ','.join(['%s'] * len(valid_ids))
         query_sql = f"SELECT * FROM images WHERE id IN ({placeholders})"
+        query_params = list(valid_ids)
+        
+        if PROJECT_SLUG:
+            query_sql += " AND project_slug = %s"
+            query_params.append(PROJECT_SLUG)
+            
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(query_sql, tuple(valid_ids))
+            cur.execute(query_sql, tuple(query_params))
             rows = cur.fetchall()
         conn.close()
 
@@ -177,7 +199,9 @@ class StandardSearch(SearchInterface):
         for score, img_id in zip(distances[0], ids[0]):
             if img_id < 0 or img_id == image_id or img_id not in row_map: continue
             img = row_map[img_id]
+            # Double check (redundant if SQL filtered, but safe)
             if PROJECT_SLUG and img.get('project_slug') != PROJECT_SLUG: continue
+            
             base_score = float(score)
             if anchor_folder and img['folder'] == anchor_folder:
                  base_score += 0.08
