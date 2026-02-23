@@ -35,10 +35,11 @@ class StandardSearch(SearchInterface):
             print("Search Error: Index or Model missing")
             return []
             
-        # CASE 1: No Query (Browse Mode or Project Mode base view)
+        # CASE 1: No Query (Browse Mode)
         if not query:
             conn = get_db_connection()
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                # If no query and in Project Mode, return seed images or highest quality
                 sql = "SELECT * FROM images"
                 params = []
                 where_clauses = []
@@ -54,10 +55,13 @@ class StandardSearch(SearchInterface):
                 if where_clauses:
                     sql += " WHERE " + " AND ".join(where_clauses)
                 
-                if project_slug:
-                    sql += " ORDER BY file_path ASC"
-                else:
-                    sql += " ORDER BY id"
+                # Priority: Seed images first, then by path
+                sql += " ORDER BY CASE WHEN id < 1000 THEN 0 ELSE 1 END ASC, file_path ASC"
+                
+                cur.execute(sql, tuple(params))
+                rows = cur.fetchall()
+            conn.close()
+            return [dict(r) for r in rows[:top_k]]
                 
                 if not project_slug and not folder:
                     sql += " LIMIT %s"
