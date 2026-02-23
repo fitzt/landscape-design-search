@@ -364,7 +364,7 @@ def get_images_details(req: ImageDetailsRequest):
     with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
         placeholders = ','.join(['%s'] * len(req.ids))
         query = f"""
-            SELECT id, file_path, thumbnail_path, favorite, tags, style_scores, caption,
+            SELECT id, file_path, filename, thumbnail_path, favorite, tags, style_scores, caption,
                    design_style, maintenance_level, seasonal_interest, spatial_purpose, color_palette, project_slug,
                    privacy_level, terrain_type, hardscape_ratio, material_palette, architectural_features
             FROM images 

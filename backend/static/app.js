@@ -14,9 +14,10 @@ window.onerror = function (msg, url, line, col, error) {
 // --- ASSET UTILS ---
 function resolveAssetUrl(path, type = 'thumbnail') {
     if (!path) return '';
-    if (path.startsWith('http')) return path;
+    const trimmedPath = String(path).trim();
+    if (trimmedPath.startsWith('http')) return trimmedPath;
     const base = type === 'thumbnail' ? '/thumbnails/' : '/images/';
-    return `${base}${path}`;
+    return `${base}${trimmedPath}`;
 }
 
 // --- BRANDING UTILS ---
