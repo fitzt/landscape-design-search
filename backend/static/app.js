@@ -15,13 +15,19 @@ window.onerror = function (msg, url, line, col, error) {
 function resolveAssetUrl(path, type = 'thumbnail') {
     if (!path) return '';
     const trimmedPath = String(path).trim();
-    // Aggressive check for absolute URLs - detect if http is anywhere or if it starts with it
-    if (trimmedPath.includes('http://') || trimmedPath.includes('https://')) {
-        const httpIndex = trimmedPath.indexOf('http');
-        return trimmedPath.substring(httpIndex);
+    console.log(`[DEBUG] resolveAssetUrl input: "${path}", type: ${type}`);
+
+    // Check if it's already a full Supabase URL or any http URL
+    if (trimmedPath.toLowerCase().startsWith('http://') || trimmedPath.toLowerCase().startsWith('https://')) {
+        console.log(`[DEBUG] Detected absolute URL: ${trimmedPath}`);
+        return trimmedPath;
     }
+
+    // Fallback for local/relative paths
     const base = type === 'thumbnail' ? '/thumbnails/' : '/images/';
-    return `${base}${trimmedPath}`;
+    const finalUrl = `${base}${trimmedPath}`;
+    console.log(`[DEBUG] Resolved to relative path: ${finalUrl}`);
+    return finalUrl;
 }
 
 // --- BRANDING UTILS ---
