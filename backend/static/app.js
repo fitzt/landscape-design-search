@@ -15,7 +15,11 @@ window.onerror = function (msg, url, line, col, error) {
 function resolveAssetUrl(path, type = 'thumbnail') {
     if (!path) return '';
     const trimmedPath = String(path).trim();
-    if (trimmedPath.startsWith('http')) return trimmedPath;
+    // Aggressive check for absolute URLs - detect if http is anywhere or if it starts with it
+    if (trimmedPath.includes('http://') || trimmedPath.includes('https://')) {
+        const httpIndex = trimmedPath.indexOf('http');
+        return trimmedPath.substring(httpIndex);
+    }
     const base = type === 'thumbnail' ? '/thumbnails/' : '/images/';
     return `${base}${trimmedPath}`;
 }

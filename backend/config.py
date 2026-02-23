@@ -29,7 +29,7 @@ CLIP_MODEL_NAME = "clip-ViT-B-32"
 
 # Search
 DEFAULT_TOP_K = 50
-PROJECT_SLUG = os.getenv("PROJECT_SLUG")
+PROJECT_SLUG = os.getenv("PROJECT_SLUG", "lynch")
 
 # Ensure directories exist
 THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
