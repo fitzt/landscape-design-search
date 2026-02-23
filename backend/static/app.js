@@ -462,10 +462,16 @@ function updateGridWithFlip(newResults, trustHeader = null) {
 }
 
 function renderImageCard(card, img, index) {
+    if (!img) {
+        console.error("renderImageCard called with null/undefined image", index);
+        return;
+    }
+    console.log(`[DEBUG] Rendering image card ${index}:`, img);
     card.onmouseenter = () => { if (visionBoard.length === 0) calculateLiveAnalysis([img]); };
     card.onmouseleave = () => { if (visionBoard.length === 0) calculateLiveAnalysis([]); };
 
     const thumbUrl = resolveAssetUrl(img.thumbnail_path);
+    console.log(`[DEBUG] Resolved thumbUrl:`, thumbUrl);
     const isSelected = visionBoard.includes(img.id);
     const iconClass = isSelected ? 'active' : '';
     const actionIcon = isSelected ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
