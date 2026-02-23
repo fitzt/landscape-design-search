@@ -81,13 +81,17 @@ class StandardSearch(SearchInterface):
             sql = f"SELECT * FROM images WHERE id IN ({placeholders})"
             params = list(found_ids)
             
-            with get_db_connection() as conn:
+            conn = get_db_connection()
+            try:
                 with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                     cur.execute(sql, params)
                     semantic_results = [dict(r) for r in cur.fetchall()]
+            finally:
+                conn.close()
 
         keyword_results = []
-        with get_db_connection() as conn:
+        conn = get_db_connection()
+        try:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 kw_sql = """
                     SELECT * FROM images 
@@ -100,6 +104,8 @@ class StandardSearch(SearchInterface):
                 kw_sql += " LIMIT 20"
                 cur.execute(kw_sql, tuple(kw_params))
                 keyword_results = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
 
         final_map = {}
         for img in semantic_results:

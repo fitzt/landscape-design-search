@@ -54,10 +54,13 @@ class ConsultationSearch(SearchInterface):
         placeholders = ','.join(['%s'] * len(found_ids))
         sql = f"SELECT * FROM images WHERE id IN ({placeholders}) AND phase = 'after' AND project_slug = 'leahy'"
         
-        with get_db_connection() as conn:
+        conn = get_db_connection()
+        try:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 cur.execute(sql, list(found_ids))
                 after_images = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
 
         # High confidence threshold
         is_low_confidence = not after_images or max(scores.values()) < 0.23
@@ -90,12 +93,15 @@ class ConsultationSearch(SearchInterface):
         if project_ids:
             placeholders = ','.join(['%s'] * len(project_ids))
             sql = f"SELECT * FROM images WHERE project_container_id IN ({placeholders}) AND phase IN ('before', 'during')"
-            with get_db_connection() as conn:
+            conn = get_db_connection()
+            try:
                 with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                     cur.execute(sql, project_ids)
                     context_images = cur.fetchall()
                     for c_img in context_images:
                         projects[c_img['project_container_id']]["assets"]["context"].append(dict(c_img))
+            finally:
+                conn.close()
 
         results = list(projects.values())
         results.sort(key=lambda x: x['score'], reverse=True)
