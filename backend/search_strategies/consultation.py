@@ -141,10 +141,13 @@ class ConsultationSearch(SearchInterface):
         }]
 
     def _get_recent_projects(self, top_k):
-        with get_db_connection() as conn:
+        conn = get_db_connection()
+        try:
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
                 cur.execute("SELECT * FROM images WHERE project_slug = 'leahy' AND phase = 'after' LIMIT %s", (top_k,))
                 rows = cur.fetchall()
+        finally:
+            conn.close()
         
         results = []
         for r in rows:
