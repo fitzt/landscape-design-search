@@ -11,6 +11,14 @@ window.onerror = function (msg, url, line, col, error) {
     return false;
 };
 
+// --- ASSET UTILS ---
+function resolveAssetUrl(path, type = 'thumbnail') {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    const base = type === 'thumbnail' ? '/thumbnails/' : '/images/';
+    return `${base}${path}`;
+}
+
 // --- BRANDING UTILS ---
 function applyBranding() {
     // 1. App-level Metadata
@@ -457,7 +465,7 @@ function renderImageCard(card, img, index) {
     card.onmouseenter = () => { if (visionBoard.length === 0) calculateLiveAnalysis([img]); };
     card.onmouseleave = () => { if (visionBoard.length === 0) calculateLiveAnalysis([]); };
 
-    const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+    const thumbUrl = resolveAssetUrl(img.thumbnail_path);
     const isSelected = visionBoard.includes(img.id);
     const iconClass = isSelected ? 'active' : '';
     const actionIcon = isSelected ? ICONS.CHECK_CIRCLE : ICONS.PLUS;
@@ -487,7 +495,7 @@ function renderImageCard(card, img, index) {
 
 function renderProjectCard(card, project, index) {
     const hero = project.hero_image;
-    const thumbUrl = `/thumbnails/${hero.thumbnail_path}`;
+    const thumbUrl = resolveAssetUrl(hero.thumbnail_path);
 
     card.classList.add('project-card');
     card.innerHTML = `
@@ -1086,7 +1094,7 @@ function updateVisionUI() {
             visionBoard.forEach(id => {
                 const img = imageCache[id];
                 if (!img) return;
-                const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+                const thumbUrl = resolveAssetUrl(img.thumbnail_path);
                 const item = document.createElement('div');
                 item.className = 'dock-item-wrapper full-image';
                 item.innerHTML = `
@@ -1437,7 +1445,7 @@ window.populateModalReview = function () {
     visionBoard.forEach(id => {
         const img = imageCache[id];
         if (!img) return;
-        const thumbUrl = `/thumbnails/${img.thumbnail_path}`;
+        const thumbUrl = resolveAssetUrl(img.thumbnail_path);
         const item = document.createElement('div');
         item.className = 'review-item';
         item.innerHTML = `
