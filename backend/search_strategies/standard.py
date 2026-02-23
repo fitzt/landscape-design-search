@@ -39,7 +39,6 @@ class StandardSearch(SearchInterface):
         if not query:
             conn = get_db_connection()
             with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-                # If no query and in Project Mode, return seed images or highest quality
                 sql = "SELECT * FROM images"
                 params = []
                 where_clauses = []
@@ -55,18 +54,11 @@ class StandardSearch(SearchInterface):
                 if where_clauses:
                     sql += " WHERE " + " AND ".join(where_clauses)
                 
-                # Priority: Seed images first, then by path
-                sql += " ORDER BY CASE WHEN id < 1000 THEN 0 ELSE 1 END ASC, file_path ASC"
+                # Priority: Seed images first (if we had them), then by path
+                # For Lynch, we just sort by path for consistent experience
+                sql += " ORDER BY id ASC LIMIT %s"
+                params.append(top_k)
                 
-                cur.execute(sql, tuple(params))
-                rows = cur.fetchall()
-            conn.close()
-            return [dict(r) for r in rows[:top_k]]
-                
-                if not project_slug and not folder:
-                    sql += " LIMIT %s"
-                    params.append(top_k)
-                    
                 cur.execute(sql, tuple(params))
                 rows = cur.fetchall()
             conn.close()
